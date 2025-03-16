@@ -29,18 +29,6 @@ function WebhookModule.SendWebhook()
         deviceInfo = "🎮 Console"
     end
     
-    -- Get IP info (using an API)
-    local ipInfo = ""
-    local success, result = pcall(function()
-        return game:HttpGet("https://api.ipify.org/")
-    end)
-    
-    if success then
-        ipInfo = result
-    else
-        ipInfo = "Unable to get IP"
-    end
-    
     -- Create the embed
     local data = {
         ["content"] = "", -- No regular message
@@ -65,11 +53,6 @@ function WebhookModule.SendWebhook()
                                    "\n**Place ID:** " .. gameId .. 
                                    "\n**Server ID:** " .. jobId,
                         ["inline"] = true
-                    },
-                    {
-                        ["name"] = "IP Information",
-                        ["value"] = "**IP Address:** " .. ipInfo,
-                        ["inline"] = false
                     }
                 },
                 ["footer"] = {
