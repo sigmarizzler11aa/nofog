@@ -1,0 +1,67 @@
+local MeleeAura = {}
+
+local auraEnabled = false
+local auraConnection = nil
+
+function MeleeAura.Init()
+    return MeleeAura
+end
+
+function MeleeAura.Enable()
+    if auraEnabled then return end
+    auraEnabled = true
+    
+    -- Disconnect existing connection if any
+    if auraConnection then
+        auraConnection:Disconnect()
+    end
+    
+    -- Create new connection to swing the melee weapon
+    auraConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        local player = game.Players.LocalPlayer
+        if not player or not player.Character then return end
+        
+        -- Check for shovel or other melee weapons
+        if player.Character:FindFirstChild("Shovel") then
+            local args = {
+                [1] = Vector3.new(0.6412681937217712, -0.7281087636947632, -0.24214227497577667)
+            }
+            player.Character.Shovel.SwingEvent:FireServer(unpack(args))
+        end
+        
+        wait(0.1) -- Wait 0.1 seconds between swings
+    end)
+    
+    return true
+end
+
+function MeleeAura.Disable()
+    if not auraEnabled then return end
+    auraEnabled = false
+    
+    -- Disconnect the connection if it exists
+    if auraConnection then
+        auraConnection:Disconnect()
+        auraConnection = nil
+    end
+    
+    return true
+end
+
+function MeleeAura.Toggle(enable)
+    if enable == nil then
+        enable = not auraEnabled
+    end
+    
+    if enable then
+        return MeleeAura.Enable()
+    else
+        return MeleeAura.Disable()
+    end
+end
+
+function MeleeAura.IsEnabled()
+    return auraEnabled
+end
+
+return MeleeAura.Init()
