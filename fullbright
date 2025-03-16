@@ -1,22 +1,101 @@
-        local lighting = game:GetService("Lighting")
-        lighting.Brightness = 2
-        lighting.ClockTime = 14
+local FullBright = {}
+
+local fullbrightEnabled = false
+local connection = nil
+local oldAmbient = nil
+local oldBrightness = nil
+local oldClockTime = nil
+local oldFogEnd = nil
+local oldGlobalShadows = nil
+local oldOutdoorAmbient = nil
+
+function FullBright.Init()
+    return FullBright
+end
+
+function FullBright.Enable()
+    if fullbrightEnabled then return end
+    fullbrightEnabled = true
+    
+    local lighting = game:GetService("Lighting")
+    
+    -- Store original values
+    oldAmbient = lighting.Ambient
+    oldBrightness = lighting.Brightness
+    oldClockTime = lighting.ClockTime
+    oldFogEnd = lighting.FogEnd
+    oldGlobalShadows = lighting.GlobalShadows
+    oldOutdoorAmbient = lighting.OutdoorAmbient
+    
+    -- Apply fullbright subtly
+    if connection then connection:Disconnect() end
+    
+    -- Use a function to update lighting
+    local function updateLighting()
+        -- More subtle approach than setting brightness to 2
+        lighting.Brightness = 1.2
+        lighting.ClockTime = 12 -- Noon
         lighting.FogEnd = 100000
         lighting.GlobalShadows = false
         lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         
-        local function updateLighting()
-            for i,v in pairs(lighting:GetDescendants()) do
-                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-                    v.Enabled = false
-                end
+        -- Disable visual effects that could interfere with fullbright
+        for _, v in pairs(lighting:GetDescendants()) do
+            if v:IsA("BlurEffect") or 
+               v:IsA("SunRaysEffect") or 
+               v:IsA("ColorCorrectionEffect") or 
+               v:IsA("BloomEffect") or 
+               v:IsA("DepthOfFieldEffect") then
+                v.Enabled = false
             end
-            lighting.Brightness = 2
-            lighting.ClockTime = 14
-            lighting.FogEnd = 100000
-            lighting.GlobalShadows = false
-            lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         end
-        
-        lighting.Changed:Connect(updateLighting)
+    end
+    
+    -- Apply initially
+    updateLighting()
+    
+    -- Set up connection to maintain fullbright
+    connection = lighting.Changed:Connect(function()
+        -- Added a very small delay to make detection harder
+        game:GetService("RunService").Heartbeat:Wait()
         updateLighting()
+    end)
+    
+    return true
+end
+
+function FullBright.Disable()
+    if not fullbrightEnabled then return end
+    fullbrightEnabled = false
+    
+    -- Disconnect the update loop
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+    
+    -- Restore original lighting settings
+    local lighting = game:GetService("Lighting")
+    lighting.Ambient = oldAmbient
+    lighting.Brightness = oldBrightness
+    lighting.ClockTime = oldClockTime
+    lighting.FogEnd = oldFogEnd
+    lighting.GlobalShadows = oldGlobalShadows
+    lighting.OutdoorAmbient = oldOutdoorAmbient
+    
+    return true
+end
+
+function FullBright.Toggle()
+    if fullbrightEnabled then
+        return FullBright.Disable()
+    else
+        return FullBright.Enable()
+    end
+end
+
+function FullBright.IsEnabled()
+    return fullbrightEnabled
+end
+
+return FullBright.Init()
