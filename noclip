@@ -1,0 +1,77 @@
+local NoClip = {}
+
+local noclipActive = false
+local noclipConnection = nil
+
+function NoClip.Init()
+    return NoClip
+end
+
+function NoClip.Enable()
+    if noclipActive then return end
+    noclipActive = true
+    
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    
+    -- Enable NoClip
+    if noclipConnection then noclipConnection:Disconnect() end
+    
+    noclipConnection = game:GetService("RunService").Stepped:Connect(function()
+        if character and character:FindFirstChild("Humanoid") then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+    
+    -- Handle character respawn
+    player.CharacterAdded:Connect(function(newCharacter)
+        if noclipActive then
+            character = newCharacter
+        end
+    end)
+    
+    return true
+end
+
+function NoClip.Disable()
+    if not noclipActive then return end
+    noclipActive = false
+    
+    -- Disable NoClip
+    if noclipConnection then 
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    
+    -- Reset collision
+    local player = game.Players.LocalPlayer
+    local character = player.Character
+    
+    if character then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+    
+    return true
+end
+
+function NoClip.Toggle()
+    if noclipActive then
+        return NoClip.Disable()
+    else
+        return NoClip.Enable()
+    end
+end
+
+function NoClip.IsEnabled()
+    return noclipActive
+end
+
+return NoClip.Init()
