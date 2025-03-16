@@ -33,46 +33,67 @@ local function getNil(name, class)
     end
 end
 
--- Function to check if an item is within range
-local function isInRange(item)
-    local character = game.Players.LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then
-        return false
-    end
-    
-    local humanoidRootPart = character.HumanoidRootPart
-    local itemPosition
-    
-    -- Try to get the item's primary part or any part to measure distance
+-- Function to get the position of an item
+local function getItemPosition(item)
     if item:IsA("Model") then
         if item.PrimaryPart then
-            itemPosition = item.PrimaryPart.Position
+            return item.PrimaryPart.Position
         else
             for _, part in pairs(item:GetDescendants()) do
                 if part:IsA("BasePart") then
-                    itemPosition = part.Position
-                    break
+                    return part.Position
                 end
             end
         end
     elseif item:IsA("BasePart") then
-        itemPosition = item.Position
+        return item.Position
     end
     
-    -- If we couldn't find a position, return false
+    return nil
+end
+
+-- Function to get the distance to an item
+local function getDistanceToItem(item)
+    local character = game.Players.LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return math.huge
+    end
+    
+    local humanoidRootPart = character.HumanoidRootPart
+    local itemPosition = getItemPosition(item)
+    
     if not itemPosition then
-        return false
+        return math.huge
     end
     
-    -- Calculate distance
-    local distance = (humanoidRootPart.Position - itemPosition).Magnitude
-    
-    -- Debug info
-    if config.debugMode then
-        print("Item: " .. item.Name .. " | Distance: " .. distance)
-    end
-    
+    return (humanoidRootPart.Position - itemPosition).Magnitude
+end
+
+-- Function to check if an item is within range
+local function isInRange(item, distance)
+    distance = distance or getDistanceToItem(item)
     return distance <= config.maxDistance
+end
+
+-- Function to sort items by distance
+local function sortItemsByDistance(items)
+    -- Create a table of items with their distances
+    local itemsWithDistances = {}
+    
+    for _, item in pairs(items) do
+        if item:IsA("Model") then
+            local distance = getDistanceToItem(item)
+            table.insert(itemsWithDistances, {item = item, distance = distance})
+        end
+    end
+    
+    -- Sort by distance (closest first)
+    table.sort(itemsWithDistances, function(a, b)
+        return a.distance < b.distance
+    end)
+    
+    -- Return the sorted items
+    return itemsWithDistances
 end
 
 -- Function to get item type from object info
@@ -166,41 +187,43 @@ local function checkItems()
     
     -- Check RuntimeItems for items
     if workspace:FindFirstChild("RuntimeItems") then
-        for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
-            if model:IsA("Model") then
-                -- Check if item is in range
-                if not isInRange(model) then
-                    continue
+        -- Get all models in RuntimeItems and sort by distance
+        local sortedItems = sortItemsByDistance(workspace.RuntimeItems:GetChildren())
+        
+        -- Process items in order of proximity
+        for _, itemData in ipairs(sortedItems) do
+            local model = itemData.item
+            local distance = itemData.distance
+            
+            -- Skip if not in range
+            if not isInRange(model, distance) then
+                continue
+            end
+            
+            -- First check for auto-store conditions
+            if model:FindFirstChild("ObjectInfo") then
+                local itemType = getItemType(model.ObjectInfo)
+                local shouldStore = false
+                
+                if state.enabled.anything then
+                    shouldStore = true
+                elseif itemType == "Junk" and state.enabled.junk then
+                    shouldStore = true
+                elseif itemType == "Valuable" and state.enabled.valuables then
+                    shouldStore = true
                 end
                 
-                if model:FindFirstChild("ObjectInfo") then
-                    -- Process for auto-store
-                    local itemType = getItemType(model.ObjectInfo)
-                    
-                    -- Determine if we should store based on enabled options
-                    local shouldStore = false
-                    
-                    if state.enabled.anything then
-                        shouldStore = true
-                    elseif itemType == "Junk" and state.enabled.junk then
-                        shouldStore = true
-                    elseif itemType == "Valuable" and state.enabled.valuables then
-                        shouldStore = true
-                    end
-                    
-                    -- Store the item if criteria met
-                    if shouldStore then
-                        storeItem(model)
-                        -- Small delay to prevent overwhelming the server
-                        wait(config.cooldown)
-                    end
-                end
-                
-                -- Process for auto-pickup tools (regardless of ObjectInfo)
-                if state.enabled.tools then
-                    pickupTool(model)
+                if shouldStore then
+                    storeItem(model)
                     wait(config.cooldown)
+                    continue -- Skip to next item after storing
                 end
+            end
+            
+            -- Then check for auto-pickup tools if not already stored
+            if state.enabled.tools then
+                pickupTool(model)
+                wait(config.cooldown)
             end
         end
     end
