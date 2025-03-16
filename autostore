@@ -1,0 +1,267 @@
+-- AutoStore Module
+-- For Goon Rails
+
+local AutoStoreModule = {}
+
+-- Configuration
+local config = {
+    checkInterval = 0.5, -- Time between checks in seconds
+    maxDistance = 30, -- Maximum distance to auto-store items (in studs)
+    cooldown = 0.2, -- Cooldown between storing individual items (in seconds)
+    debugMode = false -- Set to true for debug prints
+}
+
+-- State variables
+local state = {
+    enabled = {
+        junk = false,
+        valuables = false,
+        anything = false
+    },
+    connection = nil,
+    lastStoreTime = 0
+}
+
+-- Helper function to check nil instances
+local function getNil(name, class)
+    for _, v in next, getnilinstances() do
+        if v.ClassName == class and v.Name == name then
+            return v
+        end
+    end
+end
+
+-- Function to check if an item is within range
+local function isInRange(item)
+    local character = game.Players.LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    local humanoidRootPart = character.HumanoidRootPart
+    local itemPosition
+    
+    -- Try to get the item's primary part or any part to measure distance
+    if item:IsA("Model") then
+        if item.PrimaryPart then
+            itemPosition = item.PrimaryPart.Position
+        else
+            for _, part in pairs(item:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    itemPosition = part.Position
+                    break
+                end
+            end
+        end
+    elseif item:IsA("BasePart") then
+        itemPosition = item.Position
+    end
+    
+    -- If we couldn't find a position, return false
+    if not itemPosition then
+        return false
+    end
+    
+    -- Calculate distance
+    local distance = (humanoidRootPart.Position - itemPosition).Magnitude
+    
+    -- Debug info
+    if config.debugMode then
+        print("Item: " .. item.Name .. " | Distance: " .. distance)
+    end
+    
+    return distance <= config.maxDistance
+end
+
+-- Function to get item type from object info
+local function getItemType(objectInfo)
+    if not objectInfo then return "Unknown" end
+    
+    for _, label in pairs(objectInfo:GetDescendants()) do
+        if label:IsA("TextLabel") and label.Text then
+            -- Check for specific types
+            if label.Text == "Junk" then
+                return "Junk"
+            elseif label.Text == "Valuable" then
+                return "Valuable"
+            elseif label.Text ~= "" then
+                return label.Text -- Return any other text as type
+            end
+        end
+    end
+    
+    return "Unknown"
+end
+
+-- Function to store an item
+local function storeItem(item)
+    -- Check cooldown
+    local currentTime = tick()
+    if currentTime - state.lastStoreTime < config.cooldown then
+        return false
+    end
+    
+    -- Update last store time
+    state.lastStoreTime = currentTime
+    
+    -- Store the item
+    local args = {
+        [1] = item
+    }
+    
+    local success, errorMsg = pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("StoreItem"):FireServer(unpack(args))
+    end)
+    
+    if config.debugMode then
+        if success then
+            print("Stored item: " .. item.Name)
+        else
+            warn("Failed to store item: " .. errorMsg)
+        end
+    end
+    
+    return success
+end
+
+-- Main checking function
+local function checkItems()
+    if not workspace:FindFirstChild("RuntimeItems") then
+        return
+    end
+    
+    for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
+        if model:IsA("Model") and model:FindFirstChild("ObjectInfo") then
+            -- Check if item is in range
+            if not isInRange(model) then
+                continue
+            end
+            
+            -- Get item type
+            local itemType = getItemType(model.ObjectInfo)
+            
+            -- Determine if we should store based on enabled options
+            local shouldStore = false
+            
+            if state.enabled.anything then
+                shouldStore = true
+            elseif itemType == "Junk" and state.enabled.junk then
+                shouldStore = true
+            elseif itemType == "Valuable" and state.enabled.valuables then
+                shouldStore = true
+            end
+            
+            -- Store the item if criteria met
+            if shouldStore then
+                storeItem(model)
+                -- Small delay to prevent overwhelming the server
+                wait(config.cooldown)
+            end
+        end
+    end
+end
+
+-- Function to update auto-store loop
+function AutoStoreModule.UpdateAutoStoreLoop()
+    -- If any auto-store options are enabled, start the loop
+    if state.enabled.junk or state.enabled.valuables or state.enabled.anything then
+        -- Disconnect any existing connection
+        if state.connection then
+            state.connection:Disconnect()
+            state.connection = nil
+        end
+        
+        -- Create a new connection
+        state.connection = game:GetService("RunService").Heartbeat:Connect(function()
+            -- Only run the check at the specified interval
+            if tick() % config.checkInterval <= game:GetService("RunService").Heartbeat:Wait() then
+                checkItems()
+            end
+        end)
+    else
+        -- If all options are disabled, disconnect the loop
+        if state.connection then
+            state.connection:Disconnect()
+            state.connection = nil
+        end
+    end
+end
+
+-- Toggle functions for different item types
+function AutoStoreModule.ToggleJunk(enable)
+    state.enabled.junk = enable
+    AutoStoreModule.UpdateAutoStoreLoop()
+    return state.enabled.junk
+end
+
+function AutoStoreModule.ToggleValuables(enable)
+    state.enabled.valuables = enable
+    AutoStoreModule.UpdateAutoStoreLoop()
+    return state.enabled.valuables
+end
+
+function AutoStoreModule.ToggleAnything(enable)
+    state.enabled.anything = enable
+    AutoStoreModule.UpdateAutoStoreLoop()
+    return state.enabled.anything
+end
+
+-- Check if options are enabled
+function AutoStoreModule.IsJunkEnabled()
+    return state.enabled.junk
+end
+
+function AutoStoreModule.IsValuablesEnabled()
+    return state.enabled.valuables
+end
+
+function AutoStoreModule.IsAnythingEnabled()
+    return state.enabled.anything
+end
+
+-- Set the max distance for auto-store
+function AutoStoreModule.SetMaxDistance(distance)
+    if type(distance) == "number" and distance > 0 then
+        config.maxDistance = distance
+    end
+    return config.maxDistance
+end
+
+-- Get the current max distance
+function AutoStoreModule.GetMaxDistance()
+    return config.maxDistance
+end
+
+-- Set check interval
+function AutoStoreModule.SetCheckInterval(interval)
+    if type(interval) == "number" and interval > 0 then
+        config.checkInterval = interval
+    end
+    return config.checkInterval
+end
+
+-- Enable/disable debug mode
+function AutoStoreModule.SetDebugMode(enable)
+    config.debugMode = enable
+    return config.debugMode
+end
+
+-- Cleanup function to stop all auto-store processes
+function AutoStoreModule.Cleanup()
+    if state.connection then
+        state.connection:Disconnect()
+        state.connection = nil
+    end
+    
+    state.enabled.junk = false
+    state.enabled.valuables = false
+    state.enabled.anything = false
+end
+
+-- Initialize the module
+function AutoStoreModule.Init()
+    -- Initial setup, if needed
+    AutoStoreModule.Cleanup()
+end
+
+return AutoStoreModule
