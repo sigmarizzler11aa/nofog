@@ -46,7 +46,7 @@ function ItemESP.CreateESP(item)
     text.BorderSizePixel = 0 -- No border
     text.Size = UDim2.new(1, 0, 1, 0)
     text.Font = Enum.Font.GothamBold -- Bolder font for better visibility
-    text.TextSize = 20 -- Larger text size
+    text.TextSize = 15 -- Larger text size
     text.Text = "💎 " .. item.Name
     text.TextColor3 = Color3.fromRGB(0, 255, 255) -- Bright cyan
     text.TextStrokeTransparency = 0 -- Full text stroke
