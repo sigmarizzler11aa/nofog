@@ -1,0 +1,198 @@
+-- ServerHop Module
+-- Made for Goon Rails GUI
+
+local ServerHopModule = {}
+
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- Function to get HTTP request method based on the exploit
+local function getRequestFunction()
+    if syn and syn.request then
+        return syn.request
+    elseif http and http.request then
+        return http.request
+    elseif http_request then
+        return http_request
+    elseif fluxus and fluxus.request then
+        return fluxus.request
+    elseif request then
+        return request
+    else
+        return nil
+    end
+end
+
+-- Function to get a list of servers
+function ServerHopModule.GetServers(placeId, maxServers)
+    placeId = placeId or game.PlaceId
+    maxServers = maxServers or 100
+    
+    local requestFunc = getRequestFunction()
+    if not requestFunc then
+        return nil, "HTTP request function not found"
+    end
+    
+    local servers = {}
+    local success, result
+    
+    -- Try to get servers
+    success, result = pcall(function()
+        local response = requestFunc({
+            Url = string.format(
+                "https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=%d",
+                placeId,
+                maxServers
+            ),
+            Method = "GET"
+        })
+        
+        if response.Success and response.StatusCode == 200 then
+            return HttpService:JSONDecode(response.Body)
+        else
+            return nil, "HTTP request failed: " .. (response.StatusCode or "Unknown error")
+        end
+    end)
+    
+    if not success or not result or not result.data then
+        return nil, "Failed to get server list: " .. (result or "Unknown error")
+    end
+    
+    -- Filter out current server and full servers
+    for _, server in ipairs(result.data) do
+        if server.playing < server.maxPlayers and server.id ~= game.JobId then
+            table.insert(servers, {
+                id = server.id,
+                playing = server.playing,
+                maxPlayers = server.maxPlayers,
+                ping = server.ping
+            })
+        end
+    end
+    
+    return servers
+end
+
+-- Function to join a specific server
+function ServerHopModule.JoinServer(jobId, placeId)
+    placeId = placeId or game.PlaceId
+    
+    local success, error = pcall(function()
+        TeleportService:TeleportToPlaceInstance(placeId, jobId, Players.LocalPlayer)
+    end)
+    
+    return success, error
+end
+
+-- Main server hop function with callback for UI notifications
+function ServerHopModule.ServerHop(placeId, callback)
+    placeId = placeId or game.PlaceId
+    
+    -- Optional callback for UI notifications
+    local function notify(title, message)
+        if callback then
+            callback(title, message)
+        end
+    end
+    
+    notify("Server Hop", "Finding available servers...")
+    
+    local servers, error = ServerHopModule.GetServers(placeId)
+    
+    if not servers or #servers == 0 then
+        notify("Server Hop Failed", error or "No available servers found")
+        return false, error or "No available servers found"
+    end
+    
+    -- Select a random server
+    local selectedServer = servers[math.random(1, #servers)]
+    notify("Server Hop", "Joining server with " .. selectedServer.playing .. "/" .. selectedServer.maxPlayers .. " players")
+    
+    local success, error = ServerHopModule.JoinServer(selectedServer.id, placeId)
+    
+    if not success then
+        notify("Server Hop Failed", "Failed to teleport: " .. tostring(error))
+        return false, "Failed to teleport: " .. tostring(error)
+    end
+    
+    return true
+end
+
+-- Function to find a low population server
+function ServerHopModule.JoinLowPopServer(placeId, callback)
+    placeId = placeId or game.PlaceId
+    
+    local function notify(title, message)
+        if callback then
+            callback(title, message)
+        end
+    end
+    
+    notify("Server Hop", "Finding low population server...")
+    
+    local servers, error = ServerHopModule.GetServers(placeId)
+    
+    if not servers or #servers == 0 then
+        notify("Server Hop Failed", error or "No available servers found")
+        return false, error or "No available servers found"
+    end
+    
+    -- Sort servers by player count (ascending)
+    table.sort(servers, function(a, b)
+        return a.playing < b.playing
+    end)
+    
+    -- Join the server with the fewest players
+    local bestServer = servers[1]
+    notify("Server Hop", "Joining server with " .. bestServer.playing .. "/" .. bestServer.maxPlayers .. " players")
+    
+    local success, error = ServerHopModule.JoinServer(bestServer.id, placeId)
+    
+    if not success then
+        notify("Server Hop Failed", "Failed to teleport: " .. tostring(error))
+        return false, "Failed to teleport: " .. tostring(error)
+    end
+    
+    return true
+end
+
+-- Function to find a high population server
+function ServerHopModule.JoinHighPopServer(placeId, callback)
+    placeId = placeId or game.PlaceId
+    
+    local function notify(title, message)
+        if callback then
+            callback(title, message)
+        end
+    end
+    
+    notify("Server Hop", "Finding high population server...")
+    
+    local servers, error = ServerHopModule.GetServers(placeId)
+    
+    if not servers or #servers == 0 then
+        notify("Server Hop Failed", error or "No available servers found")
+        return false, error or "No available servers found"
+    end
+    
+    -- Sort servers by player count (descending)
+    table.sort(servers, function(a, b)
+        return a.playing > b.playing
+    end)
+    
+    -- Find the highest populated server that isn't full
+    local bestServer = servers[1]
+    notify("Server Hop", "Joining server with " .. bestServer.playing .. "/" .. bestServer.maxPlayers .. " players")
+    
+    local success, error = ServerHopModule.JoinServer(bestServer.id, placeId)
+    
+    if not success then
+        notify("Server Hop Failed", "Failed to teleport: " .. tostring(error))
+        return false, "Failed to teleport: " .. tostring(error)
+    end
+    
+    return true
+end
+
+return ServerHopModule
