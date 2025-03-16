@@ -17,16 +17,13 @@ end
 function ItemESP.CreateESP(item)
     if not item:IsA("Model") and not item:IsA("BasePart") then return end
     
-    -- Create a minimalist ESP tag
     local esp = Instance.new("BillboardGui")
     esp.Name = "ItemESP"
     esp.AlwaysOnTop = true
-    esp.Size = UDim2.new(0, 200, 0, 30) -- Just the text height
-    esp.StudsOffset = Vector3.new(0, 1.5, 0) -- Position it above the item
-    esp.MaxDistance = maxDistance
-    esp.ResetOnSpawn = false
+    esp.Size = UDim2.new(0, 200, 0, 50)  -- Fixed size
+    esp.StudsOffset = Vector3.new(0, 2, 0)
+    esp.MaxDistance = maxDistance  -- Apply max distance directly to BillboardGui
     
-    -- Find a part to attach to
     if item:IsA("Model") and item:FindFirstChild("PrimaryPart") then
         esp.Adornee = item.PrimaryPart
     else
@@ -39,26 +36,23 @@ function ItemESP.CreateESP(item)
         end
     end
     
-    -- Create just a text label with no containers
     local text = Instance.new("TextLabel")
     text.Name = "ESPText"
-    text.BackgroundTransparency = 1 -- Completely transparent background
-    text.BorderSizePixel = 0 -- No border
+    text.BackgroundTransparency = 1  -- Fully transparent background
     text.Size = UDim2.new(1, 0, 1, 0)
-    text.Font = Enum.Font.GothamBold -- Bolder font for better visibility
-    text.TextSize = 7 -- Larger text size
     text.Text = "💎 " .. item.Name
-    text.TextColor3 = Color3.fromRGB(0, 255, 255) -- Bright cyan
-    text.TextStrokeTransparency = 0 -- Full text stroke
+    text.TextColor3 = Color3.fromRGB(0, 255, 255)  -- Cyan
+    text.TextStrokeTransparency = 0  -- Full stroke for better visibility
     text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 20  -- Fixed text size
     text.Parent = esp
     
-    esp.Parent = game:GetService("CoreGui")
+    esp.Parent = game.CoreGui
     
     table.insert(espObjects, {
         esp = esp,
         item = item,
-        textLabel = text,
         lastPosition = Vector2.new(0, 0),
         offset = Vector2.new(0, 0)
     })
@@ -66,15 +60,13 @@ function ItemESP.CreateESP(item)
     return esp
 end
 
--- Function to find a non-overlapping position
 function ItemESP.FindNonOverlappingPosition(position, objectIndex)
-    local minDistance = 50 -- Minimum distance between ESP tags
+    local minDistance = 70  -- Minimum distance between ESP tags in pixels
     local maxAttempts = 5
     local currentPos = Vector2.new(position.X, position.Y)
     local bestPos = currentPos
     local minOverlap = math.huge
     
-    -- Try several positions to find the best one
     for attempt = 1, maxAttempts do
         local overlapping = false
         local totalOverlap = 0
@@ -89,18 +81,15 @@ function ItemESP.FindNonOverlappingPosition(position, objectIndex)
             end
         end
         
-        -- If we found a position with less overlap, keep it
         if totalOverlap < minOverlap then
             minOverlap = totalOverlap
             bestPos = currentPos
             
-            -- If there's no overlap at all, we can stop searching
             if not overlapping then
                 break
             end
         end
         
-        -- Try offsetting the position in a spiral pattern
         if attempt == 1 then
             currentPos = Vector2.new(position.X, position.Y - minDistance)
         elseif attempt == 2 then
@@ -124,11 +113,15 @@ function ItemESP.Update()
     local camera = workspace.CurrentCamera
     
     if not espEnabled or not humanoidRootPart then
+        for _, obj in pairs(espObjects) do
+            if obj.esp then
+                obj.esp.Enabled = false
+            end
+        end
         screenPositions = {}
         return
     end
     
-    -- Reset screen positions for this frame
     screenPositions = {}
     
     -- Sort ESP objects by distance (closest first for priority)
@@ -149,11 +142,12 @@ function ItemESP.Update()
             local distance = (humanoidRootPart.Position - itemPos).Magnitude
             
             if distance <= maxDistance then
-                local screenPoint, onScreen = camera:WorldToScreenPoint(itemPos + Vector3.new(0, 1.5, 0))
+                local screenPoint, onScreen = camera:WorldToScreenPoint(itemPos + Vector3.new(0, 2, 0))
                 
                 if onScreen then
                     obj.lastPosition = Vector2.new(screenPoint.X, screenPoint.Y)
                     screenPositions[i] = obj.lastPosition
+                    obj.esp.Enabled = true
                 else
                     obj.esp.Enabled = false
                 end
@@ -161,7 +155,6 @@ function ItemESP.Update()
                 obj.esp.Enabled = false
             end
         else
-            -- Clean up if object is gone
             if obj.esp and obj.esp.Parent then
                 obj.esp:Destroy()
             end
@@ -170,39 +163,25 @@ function ItemESP.Update()
         end
     end
     
-    -- Second pass: adjust positions and update ESP
+    -- Second pass: adjust positions to avoid overlap
     for i, obj in ipairs(espObjects) do
-        if obj.esp and obj.esp.Parent and obj.item and obj.item.Parent then
+        if obj.esp and obj.esp.Parent and obj.item and obj.item.Parent and obj.esp.Enabled then
             local itemPos = obj.item:IsA("Model") and obj.item:GetModelCFrame().Position or obj.item.Position
             local distance = (humanoidRootPart.Position - itemPos).Magnitude
             
-            if distance <= maxDistance then
-                -- Adjust position to avoid overlap
-                local adjustedPos = ItemESP.FindNonOverlappingPosition(obj.lastPosition, i)
-                obj.offset = adjustedPos - obj.lastPosition
-                
-                -- Enable and update ESP
-                obj.esp.Enabled = true
-                
-                -- Apply offset to avoid overlap
-                obj.esp.ExtentsOffsetWorldSpace = Vector3.new(obj.offset.X / 25, obj.offset.Y / 25, 0)
-                
-                -- Update text with distance
-                if obj.textLabel then
-                    obj.textLabel.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
-                    
-                    -- Keep text size large even at distance
-                    local minSize = 16
-                    local maxSize = 22
-                    local textSize = math.floor(maxSize - (distance / maxDistance) * (maxSize - minSize))
-                    obj.textLabel.TextSize = textSize
-                    
-                    -- Keep text very visible
-                    obj.textLabel.TextTransparency = math.min(0.2, (distance / maxDistance) * 0.3)
-                    obj.textLabel.TextStrokeTransparency = 0
-                end
-            else
-                obj.esp.Enabled = false
+            -- Get non-overlapping position
+            local adjustedPos = ItemESP.FindNonOverlappingPosition(obj.lastPosition, i)
+            obj.offset = adjustedPos - obj.lastPosition
+            
+            -- Apply calculated offset to avoid overlapping
+            obj.esp.ExtentsOffset = Vector3.new(obj.offset.X / 40, obj.offset.Y / 40, 0)
+            
+            -- Update text with distance but keep fixed size
+            local text = obj.esp:FindFirstChild("ESPText")
+            if text then
+                text.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
+                -- Only adjust transparency slightly based on distance
+                text.TextTransparency = math.clamp((distance / maxDistance) * 0.5, 0, 0.5)
             end
         end
     end
@@ -232,12 +211,6 @@ function ItemESP.Toggle(enabled)
         for _, obj in pairs(espObjects) do
             if obj.esp then
                 obj.esp.Enabled = false
-            end
-        end
-    else
-        for _, obj in pairs(espObjects) do
-            if obj.esp then
-                obj.esp.Enabled = true
             end
         end
     end
