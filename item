@@ -35,46 +35,32 @@ function ItemESP.CreateESP(item)
         end
     end
     
-    -- Main container for the ESP with background
-    local container = Instance.new("Frame")
-    container.Name = "Container"
-    container.BackgroundTransparency = 0.3
-    container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    container.BorderSizePixel = 0
-    container.Size = UDim2.new(1, 0, 1, 0)
-    container.Parent = esp
-    
-    -- Add corner radius to make it look better
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 6)
-    uiCorner.Parent = container
-    
     -- Item name label
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.BackgroundTransparency = 1
+    nameLabel.BackgroundTransparency = 1 -- Fully transparent background
     nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
     nameLabel.Text = "💎 " .. item.Name
-    nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
+    nameLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility
     nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     nameLabel.Font = Enum.Font.SourceSansBold
     nameLabel.TextSize = 18
-    nameLabel.Parent = container
+    nameLabel.Parent = esp
     
     -- Item info label (for additional info if available)
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "InfoLabel"
-    infoLabel.BackgroundTransparency = 1
+    infoLabel.BackgroundTransparency = 1 -- Fully transparent background
     infoLabel.Size = UDim2.new(1, 0, 0.5, 0)
     infoLabel.Position = UDim2.new(0, 0, 0.5, 0)
     infoLabel.Text = ""
-    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    infoLabel.TextStrokeTransparency = 0
+    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White
+    infoLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility
     infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     infoLabel.Font = Enum.Font.SourceSans
     infoLabel.TextSize = 14
-    infoLabel.Parent = container
+    infoLabel.Parent = esp
     
     -- Get info from ObjectInfo if it exists
     if item:FindFirstChild("ObjectInfo") and item.ObjectInfo:FindFirstChild("TextLabel") then
@@ -230,25 +216,20 @@ function ItemESP.Update()
                 local scaleFactor = math.clamp(1 - (distance / maxDistance) * 0.6, 0.4, 1)
                 obj.esp.Size = UDim2.new(0, 200 * scaleFactor, 0, 70 * scaleFactor)
                 
-                local container = obj.esp:FindFirstChild("Container")
-                if container then
-                    container.BackgroundTransparency = math.clamp(0.3 + (distance / maxDistance) * 0.5, 0.3, 0.8)
-                    
-                    -- Update name label
-                    local nameLabel = container:FindFirstChild("NameLabel")
-                    if nameLabel then
-                        nameLabel.TextTransparency = math.clamp((distance / maxDistance) * 0.7, 0, 0.7)
-                        nameLabel.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
-                        nameLabel.TextSize = math.floor(18 * scaleFactor)
-                    end
-                    
-                    -- Update info label if ObjectInfo exists
-                    local infoLabel = container:FindFirstChild("InfoLabel")
-                    if infoLabel and obj.item:FindFirstChild("ObjectInfo") and obj.item.ObjectInfo:FindFirstChild("TextLabel") then
-                        infoLabel.Text = obj.item.ObjectInfo.TextLabel.Text
-                        infoLabel.TextTransparency = math.clamp((distance / maxDistance) * 0.7, 0, 0.7)
-                        infoLabel.TextSize = math.floor(14 * scaleFactor)
-                    end
+                -- Update name label
+                local nameLabel = obj.esp:FindFirstChild("NameLabel")
+                if nameLabel then
+                    nameLabel.TextTransparency = math.clamp((distance / maxDistance) * 0.7, 0, 0.7)
+                    nameLabel.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
+                    nameLabel.TextSize = math.floor(18 * scaleFactor)
+                end
+                
+                -- Update info label if ObjectInfo exists
+                local infoLabel = obj.esp:FindFirstChild("InfoLabel")
+                if infoLabel and obj.item:FindFirstChild("ObjectInfo") and obj.item.ObjectInfo:FindFirstChild("TextLabel") then
+                    infoLabel.Text = obj.item.ObjectInfo.TextLabel.Text
+                    infoLabel.TextTransparency = math.clamp((distance / maxDistance) * 0.7, 0, 0.7)
+                    infoLabel.TextSize = math.floor(14 * scaleFactor)
                 end
                 
                 -- Apply calculated offset to avoid overlapping
