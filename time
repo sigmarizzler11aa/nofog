@@ -1,0 +1,273 @@
+local TimeDisplay = {}
+
+local timeDisplayEnabled = false
+local clockGui = nil
+local updateConnection = nil
+
+function TimeDisplay.Init()
+    return TimeDisplay
+end
+
+function TimeDisplay.CreateTimeDisplay()
+    if clockGui then
+        clockGui:Destroy()
+    end
+    
+    -- Create the clock UI
+    clockGui = Instance.new("ScreenGui")
+    clockGui.Name = "TimeDisplay"
+    clockGui.ResetOnSpawn = false
+    clockGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    -- Try to set the ScreenGui parent to CoreGui (less detectable)
+    pcall(function()
+        clockGui.Parent = game:GetService("CoreGui")
+    end)
+    
+    if not clockGui.Parent then
+        clockGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+    
+    -- Create the clock frame
+    local clockFrame = Instance.new("Frame")
+    clockFrame.Name = "ClockFrame"
+    clockFrame.Size = UDim2.new(0, 180, 0, 80) -- Larger size
+    clockFrame.Position = UDim2.new(0, 10, 1, -90) -- Bottom left corner
+    clockFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    clockFrame.BorderSizePixel = 0
+    clockFrame.AnchorPoint = Vector2.new(0, 0)
+    clockFrame.Parent = clockGui
+    
+    -- Add rounded corners
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 10)
+    uiCorner.Parent = clockFrame
+    
+    -- Add a gradient
+    local uiGradient = Instance.new("UIGradient")
+    uiGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 40)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 20))
+    }
+    uiGradient.Rotation = 45
+    uiGradient.Parent = clockFrame
+    
+    -- Add a slight shadow
+    local shadowFrame = Instance.new("Frame")
+    shadowFrame.Name = "Shadow"
+    shadowFrame.Size = UDim2.new(1, 10, 1, 10)
+    shadowFrame.Position = UDim2.new(0, -5, 0, -5)
+    shadowFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadowFrame.BackgroundTransparency = 0.7
+    shadowFrame.BorderSizePixel = 0
+    shadowFrame.ZIndex = -1
+    
+    local shadowCorner = Instance.new("UICorner")
+    shadowCorner.CornerRadius = UDim.new(0, 15)
+    shadowCorner.Parent = shadowFrame
+    
+    shadowFrame.Parent = clockFrame
+    
+    -- Clock icon
+    local clockIcon = Instance.new("ImageLabel")
+    clockIcon.Name = "ClockIcon"
+    clockIcon.Size = UDim2.new(0, 40, 0, 40) -- Larger icon
+    clockIcon.Position = UDim2.new(0, 15, 0, 20)
+    clockIcon.BackgroundTransparency = 1
+    clockIcon.Image = "rbxassetid://3926305904" -- Roblox image asset
+    clockIcon.ImageRectOffset = Vector2.new(400, 240)
+    clockIcon.ImageRectSize = Vector2.new(36, 36)
+    clockIcon.ImageColor3 = Color3.fromRGB(255, 215, 0) -- Gold color
+    clockIcon.Parent = clockFrame
+    
+    -- Time label
+    local timeLabel = Instance.new("TextLabel")
+    timeLabel.Name = "TimeDisplay"
+    timeLabel.Size = UDim2.new(0, 90, 0, 50) -- Adjusted for time only
+    timeLabel.Position = UDim2.new(0, 55, 0, 15)
+    timeLabel.BackgroundTransparency = 1
+    timeLabel.Font = Enum.Font.GothamSemibold
+    timeLabel.TextSize = 32 -- Larger text
+    timeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    timeLabel.Text = "00:00"
+    timeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    timeLabel.Parent = clockFrame
+    
+    -- AM/PM label with improved styling
+    local ampmLabel = Instance.new("TextLabel")
+    ampmLabel.Name = "AMPMDisplay"
+    ampmLabel.Size = UDim2.new(0, 40, 0, 25)
+    ampmLabel.Position = UDim2.new(0, 140, 0, 28) -- Positioned to the right of time
+    ampmLabel.BackgroundColor3 = Color3.fromRGB(255, 215, 0) -- Gold background
+    ampmLabel.BackgroundTransparency = 0.5 -- Semi-transparent
+    ampmLabel.Font = Enum.Font.GothamBlack -- Bold font
+    ampmLabel.TextSize = 16
+    ampmLabel.TextColor3 = Color3.fromRGB(0, 0, 0) -- Black text for contrast
+    ampmLabel.Text = "AM"
+    ampmLabel.TextXAlignment = Enum.TextXAlignment.Center
+    ampmLabel.TextYAlignment = Enum.TextYAlignment.Center
+    ampmLabel.BorderSizePixel = 0
+    ampmLabel.Parent = clockFrame
+    
+    -- Add rounded corners to AM/PM label
+    local ampmCorner = Instance.new("UICorner")
+    ampmCorner.CornerRadius = UDim.new(0, 6)
+    ampmCorner.Parent = ampmLabel
+    
+    -- Title label
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "Title"
+    titleLabel.Size = UDim2.new(1, 0, 0, 20)
+    titleLabel.Position = UDim2.new(0, 0, 0, -20)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 14 -- Larger title
+    titleLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold color
+    titleLabel.Text = "TIME"
+    titleLabel.Parent = clockFrame
+    
+    -- Make frame draggable
+    local UserInputService = game:GetService("UserInputService")
+    local dragging
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function update(input)
+        local delta = input.Position - dragStart
+        clockFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    clockFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = clockFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    clockFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+    
+    return clockGui
+end
+
+function TimeDisplay.UpdateTimeDisplay()
+    if not clockGui then
+        TimeDisplay.CreateTimeDisplay()
+    end
+    
+    local timeLabel = clockGui.ClockFrame.TimeDisplay
+    local ampmLabel = clockGui.ClockFrame.AMPMDisplay
+    
+    -- Get time from train dial
+    local success, trainTime = pcall(function()
+        if workspace:FindFirstChild("Train") and 
+           workspace.Train:FindFirstChild("TrainControls") and 
+           workspace.Train.TrainControls:FindFirstChild("TimeDial") and
+           workspace.Train.TrainControls.TimeDial:FindFirstChild("SurfaceGui") and
+           workspace.Train.TrainControls.TimeDial.SurfaceGui:FindFirstChild("TextLabel") then
+            return workspace.Train.TrainControls.TimeDial.SurfaceGui.TextLabel.Text
+        end
+        return "00:00"
+    end)
+    
+    if success and trainTime then
+        -- Parse the time string and extract hours, minutes, and AM/PM
+        local hours, minutes, ampm = "12", "00", "AM"
+        
+        -- Try to extract the time parts
+        hours, minutes, ampm = trainTime:match("(%d+):(%d+)%s*(%a+)")
+        
+        if not hours then
+            -- Try another format without AM/PM
+            hours, minutes = trainTime:match("(%d+):(%d+)")
+            
+            -- Default to AM if no AM/PM provided
+            ampm = ampm or "AM"
+        end
+        
+        -- Default values if parsing fails
+        hours = hours or "12"
+        minutes = minutes or "00"
+        ampm = ampm or "AM"
+        
+        -- Set the time and AM/PM labels
+        timeLabel.Text = hours .. ":" .. minutes
+        ampmLabel.Text = ampm:upper()
+    else
+        timeLabel.Text = "12:00"
+        ampmLabel.Text = "AM"
+    end
+end
+
+function TimeDisplay.Enable()
+    if timeDisplayEnabled then return end
+    timeDisplayEnabled = true
+    
+    -- Create the clock UI if it doesn't exist
+    if not clockGui then
+        TimeDisplay.CreateTimeDisplay()
+    end
+    
+    -- Show the clock
+    if clockGui then
+        clockGui.Enabled = true
+    end
+    
+    -- Set up update connection
+    if updateConnection then updateConnection:Disconnect() end
+    
+    updateConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        TimeDisplay.UpdateTimeDisplay()
+    end)
+    
+    return true
+end
+
+function TimeDisplay.Disable()
+    if not timeDisplayEnabled then return end
+    timeDisplayEnabled = false
+    
+    -- Hide the clock
+    if clockGui then
+        clockGui.Enabled = false
+    end
+    
+    -- Disconnect update
+    if updateConnection then
+        updateConnection:Disconnect()
+        updateConnection = nil
+    end
+    
+    return true
+end
+
+function TimeDisplay.Toggle()
+    if timeDisplayEnabled then
+        return TimeDisplay.Disable()
+    else
+        return TimeDisplay.Enable()
+    end
+end
+
+function TimeDisplay.IsEnabled()
+    return timeDisplayEnabled
+end
+
+return TimeDisplay.Init()
