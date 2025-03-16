@@ -1,0 +1,94 @@
+local MoneyBag = {}
+
+local autoCollectEnabled = false
+local collectConnection = nil
+local maxDistance = 30 -- Default max distance in studs
+
+function MoneyBag.Init()
+    return MoneyBag
+end
+
+function MoneyBag.Enable()
+    if autoCollectEnabled then return end
+    autoCollectEnabled = true
+    
+    -- Disconnect existing connection if any
+    if collectConnection then
+        collectConnection:Disconnect()
+    end
+    
+    -- Create new connection to collect money bags
+    collectConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        local player = game.Players.LocalPlayer
+        if not player or not player.Character then return end
+        
+        local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return end
+        
+        -- Check if RuntimeItems exists
+        if not workspace:FindFirstChild("RuntimeItems") then return end
+        
+        -- Look for money bags within range
+        for _, item in pairs(workspace.RuntimeItems:GetChildren()) do
+            if item.Name == "Moneybag" and item:FindFirstChild("MoneyBag") then
+                local moneyBagPart = item.MoneyBag
+                local distance = (humanoidRootPart.Position - moneyBagPart.Position).Magnitude
+                
+                -- Check if within configured distance
+                if distance <= maxDistance then
+                    -- Fire the proximity prompt if it exists
+                    if moneyBagPart:FindFirstChild("CollectPrompt") then
+                        fireproximityprompt(moneyBagPart.CollectPrompt)
+                    end
+                end
+            end
+        end
+        
+        wait(0.1) -- Check every 0.1 seconds
+    end)
+    
+    return true
+end
+
+function MoneyBag.Disable()
+    if not autoCollectEnabled then return end
+    autoCollectEnabled = false
+    
+    -- Disconnect the connection if it exists
+    if collectConnection then
+        collectConnection:Disconnect()
+        collectConnection = nil
+    end
+    
+    return true
+end
+
+function MoneyBag.Toggle(enable)
+    if enable == nil then
+        enable = not autoCollectEnabled
+    end
+    
+    if enable then
+        return MoneyBag.Enable()
+    else
+        return MoneyBag.Disable()
+    end
+end
+
+function MoneyBag.SetMaxDistance(distance)
+    if type(distance) == "number" and distance > 0 then
+        maxDistance = distance
+        return true
+    end
+    return false
+end
+
+function MoneyBag.GetMaxDistance()
+    return maxDistance
+end
+
+function MoneyBag.IsEnabled()
+    return autoCollectEnabled
+end
+
+return MoneyBag.Init()
