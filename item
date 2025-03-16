@@ -1,0 +1,145 @@
+local ItemESP = {}
+
+local espEnabled = false
+local maxDistance = 1000
+local espObjects = {}
+
+function ItemESP.Init()
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if espEnabled then
+            ItemESP.Update()
+        end
+    end)
+    return ItemESP
+end
+
+function ItemESP.CreateESP(item)
+    if not item:IsA("Model") and not item:IsA("BasePart") then return end
+    
+    local esp = Instance.new("BillboardGui")
+    esp.Name = "ItemESP"
+    esp.AlwaysOnTop = true
+    esp.Size = UDim2.new(0, 200, 0, 50)
+    esp.StudsOffset = Vector3.new(0, 2, 0)
+    
+    if item:IsA("Model") and item:FindFirstChild("PrimaryPart") then
+        esp.Adornee = item.PrimaryPart
+    else
+        local part = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart")
+        if part then
+            esp.Adornee = part
+        else
+            esp:Destroy()
+            return
+        end
+    end
+    
+    local text = Instance.new("TextLabel")
+    text.Name = "ESPText"
+    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Text = "💎 " .. item.Name
+    text.TextColor3 = Color3.fromRGB(0, 255, 255)
+    text.TextStrokeTransparency = 0
+    text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    text.Font = Enum.Font.SourceSansBold
+    text.TextSize = 18
+    text.Parent = esp
+    
+    esp.Parent = game.CoreGui
+    
+    table.insert(espObjects, {
+        esp = esp,
+        item = item
+    })
+    
+    return esp
+end
+
+function ItemESP.Update()
+    local player = game.Players.LocalPlayer
+    local character = player.Character
+    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    
+    if not espEnabled or not humanoidRootPart then
+        for _, obj in pairs(espObjects) do
+            if obj.esp then
+                obj.esp:Destroy()
+            end
+        end
+        espObjects = {}
+        return
+    end
+    
+    for i = #espObjects, 1, -1 do
+        local obj = espObjects[i]
+        if not obj.esp or not obj.esp.Parent or not obj.item or not obj.item.Parent then
+            if obj.esp and obj.esp.Parent then
+                obj.esp:Destroy()
+            end
+            table.remove(espObjects, i)
+        else
+            local itemPosition
+            if obj.item:IsA("Model") and obj.item:FindFirstChild("PrimaryPart") then
+                itemPosition = obj.item.PrimaryPart.Position
+            else
+                local part = obj.item:IsA("BasePart") and obj.item or obj.item:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    itemPosition = part.Position
+                else
+                    if obj.esp then obj.esp:Destroy() end
+                    table.remove(espObjects, i)
+                    continue
+                end
+            end
+            
+            local distance = (humanoidRootPart.Position - itemPosition).Magnitude
+            obj.esp.Enabled = distance <= maxDistance
+            
+            local text = obj.esp:FindFirstChild("ESPText")
+            if text then
+                text.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
+            end
+        end
+    end
+    
+    if workspace:FindFirstChild("RuntimeItems") then
+        for _, item in pairs(workspace.RuntimeItems:GetChildren()) do
+            local found = false
+            for _, obj in pairs(espObjects) do
+                if obj.item == item then
+                    found = true
+                    break
+                end
+            end
+            
+            if not found then
+                ItemESP.CreateESP(item)
+            end
+        end
+    end
+end
+
+function ItemESP.Toggle(enabled)
+    espEnabled = enabled
+    if enabled then
+        ItemESP.Update()
+    else
+        for _, obj in pairs(espObjects) do
+            if obj.esp then
+                obj.esp:Destroy()
+            end
+        end
+        espObjects = {}
+    end
+end
+
+function ItemESP.SetMaxDistance(distance)
+    maxDistance = distance
+end
+
+function ItemESP.IsEnabled()
+    return espEnabled
+end
+
+return ItemESP.Init()
