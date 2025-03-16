@@ -5,7 +5,7 @@ local AutoStoreModule = {}
 
 -- Configuration
 local config = {
-    checkInterval = 0.2, -- Time between checks in seconds
+    checkInterval = 0.5, -- Time between checks in seconds
     maxDistance = 30, -- Maximum distance to auto-store items (in studs)
     cooldown = 0.2, -- Cooldown between storing individual items (in seconds)
     debugMode = false -- Set to true for debug prints
@@ -17,11 +17,11 @@ local state = {
         junk = false,
         valuables = false,
         anything = false,
-        tools = false -- Added for auto-pickup tools
+        tools = false -- For auto-pickup tools
     },
     connection = nil,
     lastStoreTime = 0,
-    lastPickupTime = 0 -- Added for tool pickup cooldown
+    lastPickupTime = 0
 }
 
 -- Helper function to check nil instances
@@ -95,28 +95,6 @@ local function getItemType(objectInfo)
     return "Unknown"
 end
 
--- Function to check if an item is a tool
-local function isTool(model)
-    -- Check if the model has basic tool characteristics
-    -- This can be customized based on the game's tool structure
-    if model:FindFirstChild("Handle") then
-        return true
-    end
-    
-    -- Check for specific tool names or properties
-    local toolNames = {
-        "Shovel", "Pickaxe", "Axe", "Gun", "Revolver", "Rifle", "Knife"
-    }
-    
-    for _, name in ipairs(toolNames) do
-        if model.Name:find(name) then
-            return true
-        end
-    end
-    
-    return false
-end
-
 -- Function to store an item
 local function storeItem(item)
     -- Check cooldown
@@ -186,74 +164,49 @@ local function checkItems()
         return
     end
     
-    -- Check RuntimeItems for items to store
+    -- Check RuntimeItems for items
     if workspace:FindFirstChild("RuntimeItems") then
         for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
-            if model:IsA("Model") and model:FindFirstChild("ObjectInfo") then
+            if model:IsA("Model") then
                 -- Check if item is in range
                 if not isInRange(model) then
                     continue
                 end
                 
-                -- Get item type
-                local itemType = getItemType(model.ObjectInfo)
-                
-                -- Determine if we should store based on enabled options
-                local shouldStore = false
-                
-                if state.enabled.anything then
-                    shouldStore = true
-                elseif itemType == "Junk" and state.enabled.junk then
-                    shouldStore = true
-                elseif itemType == "Valuable" and state.enabled.valuables then
-                    shouldStore = true
+                if model:FindFirstChild("ObjectInfo") then
+                    -- Process for auto-store
+                    local itemType = getItemType(model.ObjectInfo)
+                    
+                    -- Determine if we should store based on enabled options
+                    local shouldStore = false
+                    
+                    if state.enabled.anything then
+                        shouldStore = true
+                    elseif itemType == "Junk" and state.enabled.junk then
+                        shouldStore = true
+                    elseif itemType == "Valuable" and state.enabled.valuables then
+                        shouldStore = true
+                    end
+                    
+                    -- Store the item if criteria met
+                    if shouldStore then
+                        storeItem(model)
+                        -- Small delay to prevent overwhelming the server
+                        wait(config.cooldown)
+                    end
                 end
                 
-                -- Store the item if criteria met
-                if shouldStore then
-                    storeItem(model)
-                    -- Small delay to prevent overwhelming the server
-                    wait(config.cooldown)
-                end
-            end
-        end
-    end
-    
-    -- Check for tools to pick up if enabled
-    if state.enabled.tools then
-        -- First check regular workspace items
-        for _, model in pairs(workspace:GetChildren()) do
-            if model:IsA("Model") and isTool(model) and isInRange(model) then
-                pickupTool(model)
-                wait(config.cooldown)
-            end
-        end
-        
-        -- Also check in RuntimeItems
-        if workspace:FindFirstChild("RuntimeItems") then
-            for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
-                if model:IsA("Model") and isTool(model) and isInRange(model) then
+                -- Process for auto-pickup tools (regardless of ObjectInfo)
+                if state.enabled.tools then
                     pickupTool(model)
                     wait(config.cooldown)
                 end
             end
         end
-        
-        -- Check nil instances for tools (if they might be in nil instances)
-        pcall(function()
-            local toolNames = {"Shovel", "Pickaxe", "Axe", "Gun", "Revolver", "Rifle", "Knife"}
-            for _, toolName in ipairs(toolNames) do
-                local nilTool = getNil(toolName, "Model")
-                if nilTool and isInRange(nilTool) then
-                    pickupTool(nilTool)
-                    wait(config.cooldown)
-                end
-            end
-        end)
     end
 end
 
--- Function to update auto-store loop
+-- Function to update auto loops
 function AutoStoreModule.UpdateAutoStoreLoop()
     -- If any auto options are enabled, start the loop
     if state.enabled.junk or state.enabled.valuables or state.enabled.anything or state.enabled.tools then
