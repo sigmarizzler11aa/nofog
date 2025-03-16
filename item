@@ -19,7 +19,7 @@ function ItemESP.CreateESP(item)
     local esp = Instance.new("BillboardGui")
     esp.Name = "ItemESP"
     esp.AlwaysOnTop = true
-    esp.Size = UDim2.new(0, 200, 0, 50)
+    esp.Size = UDim2.new(0, 200, 0, 70) -- Increased height for extra info
     esp.StudsOffset = Vector3.new(0, 2, 0)
     
     if item:IsA("Model") and item:FindFirstChild("PrimaryPart") then
@@ -34,17 +34,38 @@ function ItemESP.CreateESP(item)
         end
     end
     
-    local text = Instance.new("TextLabel")
-    text.Name = "ESPText"
-    text.BackgroundTransparency = 1
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.Text = "💎 " .. item.Name
-    text.TextColor3 = Color3.fromRGB(0, 255, 255)
-    text.TextStrokeTransparency = 0
-    text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    text.Font = Enum.Font.SourceSansBold
-    text.TextSize = 18
-    text.Parent = esp
+    -- Main name label
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0, 0)
+    nameLabel.Text = "💎 " .. item.Name
+    nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextSize = 18
+    nameLabel.Parent = esp
+    
+    -- Info label
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name = "InfoLabel"
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    infoLabel.Position = UDim2.new(0, 0, 0.5, 0)
+    infoLabel.Text = ""
+    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    infoLabel.TextStrokeTransparency = 0
+    infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    infoLabel.Font = Enum.Font.SourceSans
+    infoLabel.TextSize = 14
+    infoLabel.Parent = esp
+    
+    -- Get info from ObjectInfo if it exists
+    if item:FindFirstChild("ObjectInfo") and item.ObjectInfo:FindFirstChild("TextLabel") then
+        infoLabel.Text = item.ObjectInfo.TextLabel.Text
+    end
     
     esp.Parent = game.CoreGui
     
@@ -96,9 +117,15 @@ function ItemESP.Update()
             local distance = (humanoidRootPart.Position - itemPosition).Magnitude
             obj.esp.Enabled = distance <= maxDistance
             
-            local text = obj.esp:FindFirstChild("ESPText")
-            if text then
-                text.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
+            local nameLabel = obj.esp:FindFirstChild("NameLabel")
+            if nameLabel then
+                nameLabel.Text = "💎 " .. obj.item.Name .. " [" .. math.floor(distance) .. "m]"
+            end
+            
+            -- Update info label if ObjectInfo changes
+            local infoLabel = obj.esp:FindFirstChild("InfoLabel")
+            if infoLabel and obj.item:FindFirstChild("ObjectInfo") and obj.item.ObjectInfo:FindFirstChild("TextLabel") then
+                infoLabel.Text = obj.item.ObjectInfo.TextLabel.Text
             end
         end
     end
