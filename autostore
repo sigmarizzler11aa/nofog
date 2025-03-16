@@ -5,9 +5,9 @@ local AutoStoreModule = {}
 
 -- Configuration
 local config = {
-    checkInterval = 0.5, -- Time between checks in seconds
+    checkInterval = 0.2, -- Time between checks in seconds
     maxDistance = 30, -- Maximum distance to auto-store items (in studs)
-    cooldown = 0.2, -- Cooldown between storing individual items (in seconds)
+    cooldown = 0.1, -- Cooldown between storing individual items (in seconds)
     debugMode = false -- Set to true for debug prints
 }
 
