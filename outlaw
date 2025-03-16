@@ -3,6 +3,7 @@ local OutlawESP = {}
 local espEnabled = false
 local maxDistance = 1000
 local espObjects = {}
+local screenPositions = {}
 
 function OutlawESP.Init()
     game:GetService("RunService").RenderStepped:Connect(function()
@@ -36,7 +37,9 @@ function OutlawESP.CreateESP(outlaw)
     
     local text = Instance.new("TextLabel")
     text.Name = "ESPText"
-    text.BackgroundTransparency = 1
+    text.BackgroundTransparency = 0.3
+    text.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    text.BorderSizePixel = 0
     text.Size = UDim2.new(1, 0, 1, 0)
     text.Text = "🔫 " .. outlaw.Name
     text.TextColor3 = Color3.fromRGB(255, 0, 0)
@@ -44,22 +47,82 @@ function OutlawESP.CreateESP(outlaw)
     text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     text.Font = Enum.Font.SourceSansBold
     text.TextSize = 18
+    
+    -- Add corner radius to make it look better
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 6)
+    uiCorner.Parent = text
+    
     text.Parent = esp
     
     esp.Parent = game.CoreGui
     
     table.insert(espObjects, {
         esp = esp,
-        outlaw = outlaw
+        outlaw = outlaw,
+        lastPosition = Vector2.new(0, 0),
+        offset = Vector2.new(0, 0)
     })
     
     return esp
+end
+
+-- Function to find an appropriate position for an ESP tag to avoid overlap
+function OutlawESP.FindNonOverlappingPosition(position, objectIndex)
+    local minDistance = 70 -- Minimum distance between ESP tags in pixels
+    local maxAttempts = 5
+    local currentPos = Vector2.new(position.X, position.Y)
+    local bestPos = currentPos
+    local minOverlap = math.huge
+    
+    -- Try several positions to find the best one
+    for attempt = 1, maxAttempts do
+        local overlapping = false
+        local totalOverlap = 0
+        
+        for i, pos in pairs(screenPositions) do
+            if i ~= objectIndex then
+                local distance = (currentPos - pos).Magnitude
+                if distance < minDistance then
+                    overlapping = true
+                    totalOverlap = totalOverlap + (minDistance - distance)
+                end
+            end
+        end
+        
+        -- If we found a position with less overlap, keep it
+        if totalOverlap < minOverlap then
+            minOverlap = totalOverlap
+            bestPos = currentPos
+            
+            -- If there's no overlap at all, we can stop searching
+            if not overlapping then
+                break
+            end
+        end
+        
+        -- Try offsetting the position in a spiral pattern
+        if attempt == 1 then
+            currentPos = Vector2.new(position.X, position.Y - minDistance)
+        elseif attempt == 2 then
+            currentPos = Vector2.new(position.X + minDistance, position.Y)
+        elseif attempt == 3 then
+            currentPos = Vector2.new(position.X, position.Y + minDistance)
+        elseif attempt == 4 then
+            currentPos = Vector2.new(position.X - minDistance, position.Y)
+        elseif attempt == 5 then
+            currentPos = Vector2.new(position.X + minDistance, position.Y - minDistance)
+        end
+    end
+    
+    return bestPos
 end
 
 function OutlawESP.Update()
     local player = game.Players.LocalPlayer
     local character = player.Character
     local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local camera = workspace.CurrentCamera
     
     if not espEnabled or not humanoidRootPart then
         for _, obj in pairs(espObjects) do
@@ -68,40 +131,86 @@ function OutlawESP.Update()
             end
         end
         espObjects = {}
+        screenPositions = {}
         return
     end
     
-    for i = #espObjects, 1, -1 do
-        local obj = espObjects[i]
-        if not obj.esp or not obj.esp.Parent or not obj.outlaw or not obj.outlaw.Parent then
+    -- Reset screen positions for this frame
+    screenPositions = {}
+    
+    -- Sort ESP objects by distance (closest first for priority)
+    table.sort(espObjects, function(a, b)
+        local aDistance = (humanoidRootPart.Position - (a.outlaw.PrimaryPart and a.outlaw.PrimaryPart.Position or a.outlaw:GetModelCFrame().Position)).Magnitude
+        local bDistance = (humanoidRootPart.Position - (b.outlaw.PrimaryPart and b.outlaw.PrimaryPart.Position or b.outlaw:GetModelCFrame().Position)).Magnitude
+        return aDistance < bDistance
+    end)
+    
+    -- First pass: calculate screen positions
+    for i, obj in ipairs(espObjects) do
+        if obj.esp and obj.esp.Parent and obj.outlaw and obj.outlaw.Parent then
+            local part = obj.outlaw.PrimaryPart or obj.outlaw:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local distance = (humanoidRootPart.Position - part.Position).Magnitude
+                
+                if distance <= maxDistance then
+                    -- Calculate screen position
+                    local screenPoint, onScreen = camera:WorldToScreenPoint(part.Position + Vector3.new(0, 3, 0))
+                    
+                    if onScreen then
+                        obj.lastPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+                        screenPositions[i] = obj.lastPosition
+                    else
+                        obj.esp.Enabled = false
+                    end
+                else
+                    obj.esp.Enabled = false
+                end
+            end
+        else
             if obj.esp and obj.esp.Parent then
                 obj.esp:Destroy()
             end
             table.remove(espObjects, i)
-        else
-            if obj.outlaw:FindFirstChild("PrimaryPart") then
-                local distance = (humanoidRootPart.Position - obj.outlaw.PrimaryPart.Position).Magnitude
-                obj.esp.Enabled = distance <= maxDistance
+            i = i - 1
+        end
+    end
+    
+    -- Second pass: adjust positions to avoid overlap and update ESP
+    for i, obj in ipairs(espObjects) do
+        if obj.esp and obj.esp.Parent and obj.outlaw and obj.outlaw.Parent then
+            local part = obj.outlaw.PrimaryPart or obj.outlaw:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local distance = (humanoidRootPart.Position - part.Position).Magnitude
                 
-                local text = obj.esp:FindFirstChild("ESPText")
-                if text then
-                    text.Text = "🔫 " .. obj.outlaw.Name .. " [" .. math.floor(distance) .. "m]"
-                end
-            else
-                local part = obj.outlaw:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local distance = (humanoidRootPart.Position - part.Position).Magnitude
-                    obj.esp.Enabled = distance <= maxDistance
+                if distance <= maxDistance then
+                    -- Get non-overlapping position
+                    local adjustedPos = OutlawESP.FindNonOverlappingPosition(obj.lastPosition, i)
+                    obj.offset = adjustedPos - obj.lastPosition
+                    
+                    -- Apply the position and update the ESP
+                    obj.esp.Enabled = true
+                    
+                    -- Scale size and transparency based on distance
+                    local scaleFactor = math.clamp(1 - (distance / maxDistance) * 0.6, 0.4, 1)
+                    obj.esp.Size = UDim2.new(0, 200 * scaleFactor, 0, 50 * scaleFactor)
                     
                     local text = obj.esp:FindFirstChild("ESPText")
                     if text then
+                        text.TextTransparency = math.clamp((distance / maxDistance) * 0.7, 0, 0.7)
                         text.Text = "🔫 " .. obj.outlaw.Name .. " [" .. math.floor(distance) .. "m]"
+                        text.TextSize = math.floor(18 * scaleFactor)
                     end
+                    
+                    -- Apply calculated offset to avoid overlapping
+                    obj.esp.ExtentsOffset = Vector3.new(obj.offset.X / 40, obj.offset.Y / 40, 0)
+                else
+                    obj.esp.Enabled = false
                 end
             end
         end
     end
     
+    -- Find and add new outlaws
     for _, outlaw in pairs(workspace:GetDescendants()) do
         if outlaw:IsA("Model") and outlaw.Name:find("Outlaw") then
             local found = false
@@ -130,6 +239,7 @@ function OutlawESP.Toggle(enabled)
             end
         end
         espObjects = {}
+        screenPositions = {}
     end
 end
 
