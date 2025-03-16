@@ -31,8 +31,8 @@ function TrainTime.CreateTimeDisplay()
     -- Create the clock frame
     local clockFrame = Instance.new("Frame")
     clockFrame.Name = "ClockFrame"
-    clockFrame.Size = UDim2.new(0, 150, 0, 60)
-    clockFrame.Position = UDim2.new(1, -160, 1, -70)
+    clockFrame.Size = UDim2.new(0, 180, 0, 80) -- Larger size
+    clockFrame.Position = UDim2.new(0, 10, 1, -90) -- Bottom left corner
     clockFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     clockFrame.BorderSizePixel = 0
     clockFrame.AnchorPoint = Vector2.new(0, 0)
@@ -71,8 +71,8 @@ function TrainTime.CreateTimeDisplay()
     -- Clock icon
     local clockIcon = Instance.new("ImageLabel")
     clockIcon.Name = "ClockIcon"
-    clockIcon.Size = UDim2.new(0, 30, 0, 30)
-    clockIcon.Position = UDim2.new(0, 10, 0, 15)
+    clockIcon.Size = UDim2.new(0, 40, 0, 40) -- Larger icon
+    clockIcon.Position = UDim2.new(0, 15, 0, 20)
     clockIcon.BackgroundTransparency = 1
     clockIcon.Image = "rbxassetid://3926305904" -- Roblox image asset
     clockIcon.ImageRectOffset = Vector2.new(400, 240)
@@ -83,11 +83,11 @@ function TrainTime.CreateTimeDisplay()
     -- Time label
     local timeLabel = Instance.new("TextLabel")
     timeLabel.Name = "TimeDisplay"
-    timeLabel.Size = UDim2.new(0, 100, 0, 40)
-    timeLabel.Position = UDim2.new(0, 45, 0, 10)
+    timeLabel.Size = UDim2.new(0, 120, 0, 50) -- Larger text area
+    timeLabel.Position = UDim2.new(0, 55, 0, 15)
     timeLabel.BackgroundTransparency = 1
     timeLabel.Font = Enum.Font.GothamSemibold
-    timeLabel.TextSize = 24
+    timeLabel.TextSize = 32 -- Larger text
     timeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     timeLabel.Text = "00:00"
     timeLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -100,10 +100,48 @@ function TrainTime.CreateTimeDisplay()
     titleLabel.Position = UDim2.new(0, 0, 0, -20)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 12
+    titleLabel.TextSize = 14 -- Larger title
     titleLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold color
     titleLabel.Text = "TRAIN TIME"
     titleLabel.Parent = clockFrame
+    
+    -- Make frame draggable
+    local UserInputService = game:GetService("UserInputService")
+    local dragging
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function update(input)
+        local delta = input.Position - dragStart
+        clockFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    clockFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = clockFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    clockFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
     
     return clockGui
 end
