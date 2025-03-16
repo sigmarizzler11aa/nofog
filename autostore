@@ -100,14 +100,27 @@ end
 local function getItemType(objectInfo)
     if not objectInfo then return "Unknown" end
     
+    -- First check direct children for TextLabels
+    for _, child in pairs(objectInfo:GetChildren()) do
+        if child:IsA("TextLabel") and child.Text then
+            local text = child.Text:lower()
+            if text:find("junk") then
+                return "Junk"
+            elseif text:find("valuable") then
+                return "Valuable"
+            end
+        end
+    end
+    
+    -- Then search all descendants
     for _, label in pairs(objectInfo:GetDescendants()) do
         if label:IsA("TextLabel") and label.Text then
-            -- Check for specific types
-            if label.Text == "Junk" then
+            local text = label.Text:lower()
+            if text:find("junk") then
                 return "Junk"
-            elseif label.Text == "Valuable" then
+            elseif text:find("valuable") then
                 return "Valuable"
-            elseif label.Text ~= "" then
+            elseif text ~= "" then
                 return label.Text -- Return any other text as type
             end
         end
