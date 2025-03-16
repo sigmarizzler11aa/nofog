@@ -1,35 +1,67 @@
 local CameraControls = {}
 
+local shiftLockEnabled = false
+local thirdPersonEnabled = false
+local defaultFOV = 70
+
 function CameraControls.Init()
+    -- Check initial camera mode
+    local player = game.Players.LocalPlayer
+    if player then
+        thirdPersonEnabled = player.CameraMode ~= Enum.CameraMode.LockFirstPerson
+    end
+    
     return CameraControls
 end
 
-function CameraControls.EnableShiftLock()
+function CameraControls.ToggleShiftLock(enable)
     local player = game.Players.LocalPlayer
     if player then
-        player.DevEnableMouseLock = true
+        if enable ~= nil then
+            shiftLockEnabled = enable
+        else
+            shiftLockEnabled = not shiftLockEnabled
+        end
+        
+        player.DevEnableMouseLock = shiftLockEnabled
         return true
     end
     return false
 end
 
-function CameraControls.EnableThirdPerson()
+function CameraControls.ToggleThirdPerson(enable)
     local player = game.Players.LocalPlayer
     if player then
-        if player.CameraMode == Enum.CameraMode.LockFirstPerson then
-            player.CameraMode = Enum.CameraMode.Classic
-            return true
+        if enable ~= nil then
+            thirdPersonEnabled = enable
+        else
+            thirdPersonEnabled = not thirdPersonEnabled
         end
+        
+        if thirdPersonEnabled then
+            player.CameraMode = Enum.CameraMode.Classic
+        else
+            player.CameraMode = Enum.CameraMode.LockFirstPerson
+        end
+        return true
     end
     return false
 end
 
-function CameraControls.IsFirstPerson()
+function CameraControls.IsShiftLockEnabled()
     local player = game.Players.LocalPlayer
     if player then
-        return player.CameraMode == Enum.CameraMode.LockFirstPerson
+        return player.DevEnableMouseLock
     end
-    return false
+    return shiftLockEnabled
+end
+
+function CameraControls.IsThirdPersonEnabled()
+    local player = game.Players.LocalPlayer
+    if player then
+        return player.CameraMode ~= Enum.CameraMode.LockFirstPerson
+    end
+    return thirdPersonEnabled
 end
 
 function CameraControls.SetMaxZoom(distance)
@@ -47,6 +79,23 @@ function CameraControls.GetMaxZoom()
         return player.CameraMaxZoomDistance
     end
     return 100 -- Default value
+end
+
+function CameraControls.SetFOV(fov)
+    local camera = workspace.CurrentCamera
+    if camera then
+        camera.FieldOfView = fov
+        return true
+    end
+    return false
+end
+
+function CameraControls.GetFOV()
+    local camera = workspace.CurrentCamera
+    if camera then
+        return camera.FieldOfView
+    end
+    return defaultFOV
 end
 
 return CameraControls.Init()
