@@ -17,11 +17,14 @@ end
 function ItemESP.CreateESP(item)
     if not item:IsA("Model") and not item:IsA("BasePart") then return end
     
+    -- The main ESP container
     local esp = Instance.new("BillboardGui")
     esp.Name = "ItemESP"
     esp.AlwaysOnTop = true
     esp.Size = UDim2.new(0, 200, 0, 70) -- Taller for possible item info
     esp.StudsOffset = Vector3.new(0, 2, 0)
+    esp.ClipsDescendants = false -- Allow text to render outside the frame if needed
+    esp.Active = false -- Make sure it doesn't interfere with clicks
     
     if item:IsA("Model") and item:FindFirstChild("PrimaryPart") then
         esp.Adornee = item.PrimaryPart
@@ -35,28 +38,30 @@ function ItemESP.CreateESP(item)
         end
     end
     
-    -- Item name label
+    -- Item name label - COMPLETELY clean with no background
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "NameLabel"
-    nameLabel.BackgroundTransparency = 1 -- Fully transparent background
+    nameLabel.BackgroundTransparency = 1 -- Fully transparent
+    nameLabel.BorderSizePixel = 0 -- No border
     nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
     nameLabel.Text = "💎 " .. item.Name
     nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
-    nameLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility
+    nameLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility against all backgrounds
     nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     nameLabel.Font = Enum.Font.SourceSansBold
     nameLabel.TextSize = 18
     nameLabel.Parent = esp
     
-    -- Item info label (for additional info if available)
+    -- Item info label - COMPLETELY clean with no background
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "InfoLabel"
-    infoLabel.BackgroundTransparency = 1 -- Fully transparent background
+    infoLabel.BackgroundTransparency = 1 -- Fully transparent
+    infoLabel.BorderSizePixel = 0 -- No border
     infoLabel.Size = UDim2.new(1, 0, 0.5, 0)
     infoLabel.Position = UDim2.new(0, 0, 0.5, 0)
     infoLabel.Text = ""
     infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White
-    infoLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility
+    infoLabel.TextStrokeTransparency = 0 -- Full stroke for better visibility against all backgrounds
     infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     infoLabel.Font = Enum.Font.SourceSans
     infoLabel.TextSize = 14
