@@ -37,22 +37,14 @@ function HorseESP.CreateESP(horse)
     
     local text = Instance.new("TextLabel")
     text.Name = "ESPText"
-    text.BackgroundTransparency = 0.3
-    text.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    text.BorderSizePixel = 0
+    text.BackgroundTransparency = 1 -- Fully transparent background
     text.Size = UDim2.new(1, 0, 1, 0)
     text.Text = "🐎 " .. horse.Name
-    text.TextColor3 = Color3.fromRGB(255, 255, 0)
-    text.TextStrokeTransparency = 0
+    text.TextColor3 = Color3.fromRGB(255, 255, 0) -- Yellow
+    text.TextStrokeTransparency = 0 -- Full stroke for better visibility
     text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     text.Font = Enum.Font.SourceSansBold
     text.TextSize = 18
-    
-    -- Add corner radius to make it look better
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 6)
-    uiCorner.Parent = text
-    
     text.Parent = esp
     
     esp.Parent = game.CoreGui
