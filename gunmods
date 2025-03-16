@@ -1,0 +1,198 @@
+local GunMods = {}
+
+local rapidFireEnabled = false
+local noSpreadEnabled = false
+local instantReloadEnabled = false
+
+-- Store original values
+local originalFireDelays = {}
+local originalSpreadAngles = {}
+local originalReloadDurations = {}
+
+function GunMods.Init()
+    return GunMods
+end
+
+-- Helper function to find all weapons
+local function getAllWeapons()
+    local player = game:GetService("Players").LocalPlayer
+    local weapons = {}
+    
+    -- Check backpack
+    if player and player:FindFirstChild("Backpack") then
+        for _, tool in pairs(player.Backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                table.insert(weapons, tool)
+            end
+        end
+    end
+    
+    -- Check currently equipped weapon
+    if player and player.Character then
+        for _, tool in pairs(player.Character:GetChildren()) do
+            if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                table.insert(weapons, tool)
+            end
+        end
+    end
+    
+    return weapons
+end
+
+-- Function to toggle rapid fire
+function GunMods.ToggleRapidFire(enable)
+    rapidFireEnabled = enable
+    local weapons = getAllWeapons()
+    
+    for _, weapon in pairs(weapons) do
+        local config = weapon:FindFirstChild("WeaponConfiguration")
+        if config then
+            -- Store original value if we haven't already
+            if enable and not originalFireDelays[weapon.Name] and config:FindFirstChild("FireDelay") then
+                originalFireDelays[weapon.Name] = config.FireDelay.Value
+            end
+            
+            -- Modify or restore value
+            if config:FindFirstChild("FireDelay") then
+                if enable then
+                    config.FireDelay.Value = 0.1
+                else
+                    -- Restore original value if we have it
+                    if originalFireDelays[weapon.Name] then
+                        config.FireDelay.Value = originalFireDelays[weapon.Name]
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Set up connection to handle new weapons
+    if enable then
+        GunMods.ConnectBackpackAddition()
+    end
+    
+    return true
+end
+
+-- Function to toggle no spread
+function GunMods.ToggleNoSpread(enable)
+    noSpreadEnabled = enable
+    local weapons = getAllWeapons()
+    
+    for _, weapon in pairs(weapons) do
+        local config = weapon:FindFirstChild("WeaponConfiguration")
+        if config then
+            -- Store original value if we haven't already
+            if enable and not originalSpreadAngles[weapon.Name] and config:FindFirstChild("SpreadAngle") then
+                originalSpreadAngles[weapon.Name] = config.SpreadAngle.Value
+            end
+            
+            -- Modify or restore value
+            if config:FindFirstChild("SpreadAngle") then
+                if enable then
+                    config.SpreadAngle.Value = 0
+                else
+                    -- Restore original value if we have it
+                    if originalSpreadAngles[weapon.Name] then
+                        config.SpreadAngle.Value = originalSpreadAngles[weapon.Name]
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Set up connection to handle new weapons
+    if enable then
+        GunMods.ConnectBackpackAddition()
+    end
+    
+    return true
+end
+
+-- Function to toggle instant reload
+function GunMods.ToggleInstantReload(enable)
+    instantReloadEnabled = enable
+    local weapons = getAllWeapons()
+    
+    for _, weapon in pairs(weapons) do
+        local config = weapon:FindFirstChild("WeaponConfiguration")
+        if config then
+            -- Store original value if we haven't already
+            if enable and not originalReloadDurations[weapon.Name] and config:FindFirstChild("ReloadDuration") then
+                originalReloadDurations[weapon.Name] = config.ReloadDuration.Value
+            end
+            
+            -- Modify or restore value
+            if config:FindFirstChild("ReloadDuration") then
+                if enable then
+                    config.ReloadDuration.Value = 0
+                else
+                    -- Restore original value if we have it
+                    if originalReloadDurations[weapon.Name] then
+                        config.ReloadDuration.Value = originalReloadDurations[weapon.Name]
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Set up connection to handle new weapons
+    if enable then
+        GunMods.ConnectBackpackAddition()
+    end
+    
+    return true
+end
+
+-- Connection to handle weapons added to backpack
+local backpackConnection = nil
+function GunMods.ConnectBackpackAddition()
+    local player = game:GetService("Players").LocalPlayer
+    
+    if backpackConnection then
+        backpackConnection:Disconnect()
+    end
+    
+    backpackConnection = player.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child:WaitForChild("WeaponConfiguration", 1) then
+            local config = child.WeaponConfiguration
+            
+            -- Apply mods based on current settings
+            if rapidFireEnabled and config:FindFirstChild("FireDelay") then
+                if not originalFireDelays[child.Name] then
+                    originalFireDelays[child.Name] = config.FireDelay.Value
+                end
+                config.FireDelay.Value = 0.1
+            end
+            
+            if noSpreadEnabled and config:FindFirstChild("SpreadAngle") then
+                if not originalSpreadAngles[child.Name] then
+                    originalSpreadAngles[child.Name] = config.SpreadAngle.Value
+                end
+                config.SpreadAngle.Value = 0
+            end
+            
+            if instantReloadEnabled and config:FindFirstChild("ReloadDuration") then
+                if not originalReloadDurations[child.Name] then
+                    originalReloadDurations[child.Name] = config.ReloadDuration.Value
+                end
+                config.ReloadDuration.Value = 0
+            end
+        end
+    end)
+end
+
+-- Check status
+function GunMods.IsRapidFireEnabled()
+    return rapidFireEnabled
+end
+
+function GunMods.IsNoSpreadEnabled()
+    return noSpreadEnabled
+end
+
+function GunMods.IsInstantReloadEnabled()
+    return instantReloadEnabled
+end
+
+return GunMods.Init()
