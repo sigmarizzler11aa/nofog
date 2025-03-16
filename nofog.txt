@@ -1,22 +1,3 @@
-        local lighting = game:GetService("Lighting")
-        lighting.Brightness = 2
-        lighting.ClockTime = 14
-        lighting.FogEnd = 100000
-        lighting.GlobalShadows = false
-        lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        
-        local function updateLighting()
-            for i,v in pairs(lighting:GetDescendants()) do
-                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
-                    v.Enabled = false
-                end
-            end
-            lighting.Brightness = 2
-            lighting.ClockTime = 14
-            lighting.FogEnd = 100000
-            lighting.GlobalShadows = false
-            lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        end
-        
-        lighting.Changed:Connect(updateLighting)
-        updateLighting()
+        game.Lighting.FogStart = 0
+        game.Lighting.FogEnd = 9999999
+        game.Lighting.Atmosphere.Density = 0
