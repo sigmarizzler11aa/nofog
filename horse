@@ -1,0 +1,144 @@
+local HorseESP = {}
+
+local espEnabled = false
+local maxDistance = 1000
+local espObjects = {}
+
+function HorseESP.Init()
+    game:GetService("RunService").RenderStepped:Connect(function()
+        if espEnabled then
+            HorseESP.Update()
+        end
+    end)
+    return HorseESP
+end
+
+function HorseESP.CreateESP(horse)
+    if not horse:IsA("Model") then return end
+    
+    local esp = Instance.new("BillboardGui")
+    esp.Name = "HorseESP"
+    esp.AlwaysOnTop = true
+    esp.Size = UDim2.new(0, 200, 0, 50)
+    esp.StudsOffset = Vector3.new(0, 3, 0)
+    
+    if horse:FindFirstChild("PrimaryPart") then
+        esp.Adornee = horse.PrimaryPart
+    else
+        local part = horse:FindFirstChildWhichIsA("BasePart")
+        if part then
+            esp.Adornee = part
+        else
+            esp:Destroy()
+            return
+        end
+    end
+    
+    local text = Instance.new("TextLabel")
+    text.Name = "ESPText"
+    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Text = "🐎 " .. horse.Name
+    text.TextColor3 = Color3.fromRGB(255, 255, 0)
+    text.TextStrokeTransparency = 0
+    text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    text.Font = Enum.Font.SourceSansBold
+    text.TextSize = 18
+    text.Parent = esp
+    
+    esp.Parent = game.CoreGui
+    
+    table.insert(espObjects, {
+        esp = esp,
+        horse = horse
+    })
+    
+    return esp
+end
+
+function HorseESP.Update()
+    local player = game.Players.LocalPlayer
+    local character = player.Character
+    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    
+    if not espEnabled or not humanoidRootPart then
+        for _, obj in pairs(espObjects) do
+            if obj.esp then
+                obj.esp:Destroy()
+            end
+        end
+        espObjects = {}
+        return
+    end
+    
+    for i = #espObjects, 1, -1 do
+        local obj = espObjects[i]
+        if not obj.esp or not obj.esp.Parent or not obj.horse or not obj.horse.Parent then
+            if obj.esp and obj.esp.Parent then
+                obj.esp:Destroy()
+            end
+            table.remove(espObjects, i)
+        else
+            if obj.horse:FindFirstChild("PrimaryPart") then
+                local distance = (humanoidRootPart.Position - obj.horse.PrimaryPart.Position).Magnitude
+                obj.esp.Enabled = distance <= maxDistance
+                
+                local text = obj.esp:FindFirstChild("ESPText")
+                if text then
+                    text.Text = "🐎 " .. obj.horse.Name .. " [" .. math.floor(distance) .. "m]"
+                end
+            else
+                local part = obj.horse:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local distance = (humanoidRootPart.Position - part.Position).Magnitude
+                    obj.esp.Enabled = distance <= maxDistance
+                    
+                    local text = obj.esp:FindFirstChild("ESPText")
+                    if text then
+                        text.Text = "🐎 " .. obj.horse.Name .. " [" .. math.floor(distance) .. "m]"
+                    end
+                end
+            end
+        end
+    end
+    
+    for _, horse in pairs(workspace:GetDescendants()) do
+        if horse:IsA("Model") and horse.Name:find("Horse") then
+            local found = false
+            for _, obj in pairs(espObjects) do
+                if obj.horse == horse then
+                    found = true
+                    break
+                end
+            end
+            
+            if not found then
+                HorseESP.CreateESP(horse)
+            end
+        end
+    end
+end
+
+function HorseESP.Toggle(enabled)
+    espEnabled = enabled
+    if enabled then
+        HorseESP.Update()
+    else
+        for _, obj in pairs(espObjects) do
+            if obj.esp then
+                obj.esp:Destroy()
+            end
+        end
+        espObjects = {}
+    end
+end
+
+function HorseESP.SetMaxDistance(distance)
+    maxDistance = distance
+end
+
+function HorseESP.IsEnabled()
+    return espEnabled
+end
+
+return HorseESP.Init()
