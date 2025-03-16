@@ -1,0 +1,52 @@
+local CameraControls = {}
+
+function CameraControls.Init()
+    return CameraControls
+end
+
+function CameraControls.EnableShiftLock()
+    local player = game.Players.LocalPlayer
+    if player then
+        player.DevEnableMouseLock = true
+        return true
+    end
+    return false
+end
+
+function CameraControls.EnableThirdPerson()
+    local player = game.Players.LocalPlayer
+    if player then
+        if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+            player.CameraMode = Enum.CameraMode.Classic
+            return true
+        end
+    end
+    return false
+end
+
+function CameraControls.IsFirstPerson()
+    local player = game.Players.LocalPlayer
+    if player then
+        return player.CameraMode == Enum.CameraMode.LockFirstPerson
+    end
+    return false
+end
+
+function CameraControls.SetMaxZoom(distance)
+    local player = game.Players.LocalPlayer
+    if player then
+        player.CameraMaxZoomDistance = distance
+        return true
+    end
+    return false
+end
+
+function CameraControls.GetMaxZoom()
+    local player = game.Players.LocalPlayer
+    if player then
+        return player.CameraMaxZoomDistance
+    end
+    return 100 -- Default value
+end
+
+return CameraControls.Init()
