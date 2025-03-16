@@ -1,0 +1,1065 @@
+-- Server Browser Module
+-- Made for Goon Rails GUI
+
+local ServerBrowserModule = {}
+
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+-- Function to get HTTP request method based on the exploit
+local function getRequestFunction()
+    if syn and syn.request then
+        return syn.request
+    elseif http and http.request then
+        return http.request
+    elseif http_request then
+        return http_request
+    elseif fluxus and fluxus.request then
+        return fluxus.request
+    elseif request then
+        return request
+    else
+        return nil
+    end
+end
+
+-- Configuration
+local config = {
+    uiName = "GoonRailsServerBrowser",
+    colors = {
+        background = Color3.fromRGB(30, 30, 35),
+        header = Color3.fromRGB(22, 22, 26),
+        accent = Color3.fromRGB(100, 100, 255),
+        button = Color3.fromRGB(45, 45, 50),
+        buttonHover = Color3.fromRGB(55, 55, 60),
+        text = Color3.fromRGB(255, 255, 255),
+        subText = Color3.fromRGB(180, 180, 180),
+        loading = Color3.fromRGB(100, 100, 255),
+        serverCard = Color3.fromRGB(40, 40, 45),
+        serverCardHover = Color3.fromRGB(50, 50, 55),
+        joinButton = Color3.fromRGB(80, 170, 100),
+        joinButtonHover = Color3.fromRGB(100, 200, 120),
+        progressBar = Color3.fromRGB(100, 100, 255),
+        shadow = Color3.fromRGB(0, 0, 0)
+    }
+}
+
+-- UI Elements
+local ui = {
+    mainFrame = nil,
+    serverList = nil,
+    serverCards = {},
+    refreshButton = nil,
+    closeButton = nil,
+    sortButtons = {},
+    searchBar = nil,
+    loadingIndicator = nil,
+    statusLabel = nil,
+    pageButtons = {}
+}
+
+-- State variables
+local state = {
+    servers = {},
+    filteredServers = {},
+    sortOption = "players_desc", -- Default sort by players (high to low)
+    searchQuery = "",
+    isLoading = false,
+    currentPage = 1,
+    serversPerPage = 6,
+    isVisible = false,
+    isDragging = false,
+    dragOffset = Vector2.new(0, 0),
+    nextAutoRefresh = 0,
+    autoRefreshInterval = 60 -- Auto refresh every 60 seconds
+}
+
+-- Utility functions
+local function roundCorners(frame, radius)
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, radius or 6)
+    uiCorner.Parent = frame
+end
+
+local function createShadow(parent, transparency, distance)
+    local shadow = Instance.new("ImageLabel")
+    shadow.Name = "Shadow"
+    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    shadow.BackgroundTransparency = 1
+    shadow.Position = UDim2.new(0.5, 0, 0.5, distance or 2)
+    shadow.Size = UDim2.new(1, 10, 1, 10)
+    shadow.ZIndex = parent.ZIndex - 1
+    shadow.Image = "rbxassetid://1316045217"
+    shadow.ImageColor3 = config.colors.shadow
+    shadow.ImageTransparency = transparency or 0.6
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    shadow.Parent = parent
+    return shadow
+end
+
+local function createRippleEffect(button)
+    button.ClipsDescendants = true
+    
+    button.MouseButton1Down:Connect(function(x, y)
+        local ripple = Instance.new("Frame")
+        ripple.Name = "Ripple"
+        ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+        ripple.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        ripple.BackgroundTransparency = 0.7
+        ripple.Position = UDim2.new(0, x - button.AbsolutePosition.X, 0, y - button.AbsolutePosition.Y)
+        ripple.Size = UDim2.new(0, 0, 0, 0)
+        roundCorners(ripple, 999)
+        ripple.Parent = button
+        
+        local size = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2
+        local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        
+        local tween = TweenService:Create(ripple, tweenInfo, {
+            Size = UDim2.new(0, size, 0, size),
+            BackgroundTransparency = 1
+        })
+        
+        tween:Play()
+        tween.Completed:Connect(function()
+            ripple:Destroy()
+        end)
+    end)
+end
+
+local function getFormattedPing(ping)
+    if ping < 50 then
+        return string.format("<font color='rgb(100, 255, 100)'>%d ms</font>", ping)
+    elseif ping < 100 then
+        return string.format("<font color='rgb(255, 255, 100)'>%d ms</font>", ping)
+    else
+        return string.format("<font color='rgb(255, 100, 100)'>%d ms</font>", ping)
+    end
+end
+
+local function getTimeAgo(seconds)
+    if seconds < 60 then
+        return "Just now"
+    elseif seconds < 3600 then
+        local minutes = math.floor(seconds / 60)
+        return minutes .. " minute" .. (minutes > 1 and "s" or "") .. " ago"
+    elseif seconds < 86400 then
+        local hours = math.floor(seconds / 3600)
+        return hours .. " hour" .. (hours > 1 and "s" or "") .. " ago"
+    else
+        local days = math.floor(seconds / 86400)
+        return days .. " day" .. (days > 1 and "s" or "") .. " ago"
+    end
+end
+
+-- Function to get servers from Roblox API
+function ServerBrowserModule.FetchServers(placeId, maxServers, callback)
+    placeId = placeId or game.PlaceId
+    maxServers = maxServers or 100
+    
+    local requestFunc = getRequestFunction()
+    if not requestFunc then
+        if callback then
+            callback(nil, "HTTP request function not found")
+        end
+        return nil, "HTTP request function not found"
+    end
+    
+    local servers = {}
+    local cursor = nil
+    local fetched = 0
+    local moreAvailable = true
+    
+    state.isLoading = true
+    if ui.statusLabel then
+        ui.statusLabel.Text = "Loading server list..."
+    end
+    
+    -- Set loading indicator
+    if ui.loadingIndicator then
+        ui.loadingIndicator.Visible = true
+    end
+    
+    local function fetchPage()
+        local url = string.format(
+            "https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100%s",
+            placeId,
+            cursor and ("&cursor=" .. cursor) or ""
+        )
+        
+        local success, result
+        success, result = pcall(function()
+            local response = requestFunc({
+                Url = url,
+                Method = "GET"
+            })
+            
+            if response.Success and response.StatusCode == 200 then
+                return HttpService:JSONDecode(response.Body)
+            else
+                return nil, "HTTP request failed: " .. (response.StatusCode or "Unknown error")
+            end
+        end)
+        
+        if not success or not result or not result.data then
+            state.isLoading = false
+            if ui.loadingIndicator then
+                ui.loadingIndicator.Visible = false
+            end
+            if ui.statusLabel then
+                ui.statusLabel.Text = "Failed to get server list: " .. (result or "Unknown error")
+            end
+            if callback then
+                callback(nil, "Failed to get server list: " .. (result or "Unknown error"))
+            end
+            return
+        end
+        
+        -- Process servers
+        for _, server in ipairs(result.data) do
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                table.insert(servers, {
+                    id = server.id,
+                    playing = server.playing,
+                    maxPlayers = server.maxPlayers,
+                    ping = server.ping,
+                    fps = server.fps or 60, -- Some servers might not report FPS
+                    updateTime = os.time()
+                })
+                fetched = fetched + 1
+                
+                if fetched >= maxServers then
+                    moreAvailable = false
+                    break
+                end
+            end
+        end
+        
+        -- Update cursor if there are more pages available
+        if result.nextPageCursor and moreAvailable then
+            cursor = result.nextPageCursor
+            fetchPage()
+        else
+            state.isLoading = false
+            if ui.loadingIndicator then
+                ui.loadingIndicator.Visible = false
+            end
+            if ui.statusLabel then
+                ui.statusLabel.Text = "Found " .. #servers .. " available servers"
+            end
+            state.servers = servers
+            state.filteredServers = ServerBrowserModule.FilterAndSortServers()
+            ServerBrowserModule.UpdateServerList()
+            
+            if callback then
+                callback(servers)
+            end
+        end
+    end
+    
+    fetchPage()
+    return true
+end
+
+-- Function to filter and sort servers
+function ServerBrowserModule.FilterAndSortServers()
+    local filtered = {}
+    
+    -- Filter by search query
+    for _, server in ipairs(state.servers) do
+        if state.searchQuery == "" or
+           tostring(server.playing):find(state.searchQuery, 1, true) or
+           tostring(server.maxPlayers):find(state.searchQuery, 1, true) or
+           tostring(server.ping):find(state.searchQuery, 1, true) then
+            table.insert(filtered, server)
+        end
+    end
+    
+    -- Sort servers
+    table.sort(filtered, function(a, b)
+        if state.sortOption == "players_desc" then
+            return a.playing > b.playing
+        elseif state.sortOption == "players_asc" then
+            return a.playing < b.playing
+        elseif state.sortOption == "ping_asc" then
+            return a.ping < b.ping
+        elseif state.sortOption == "ping_desc" then
+            return a.ping > b.ping
+        elseif state.sortOption == "fps_desc" then
+            return (a.fps or 60) > (b.fps or 60)
+        elseif state.sortOption == "fps_asc" then
+            return (a.fps or 60) < (b.fps or 60)
+        else
+            return a.playing > b.playing
+        end
+    end)
+    
+    return filtered
+end
+
+-- Function to join a server
+function ServerBrowserModule.JoinServer(jobId, placeId, serverCard)
+    placeId = placeId or game.PlaceId
+    
+    -- Update UI to show we're joining
+    if serverCard then
+        local joinButton = serverCard:FindFirstChild("JoinButton")
+        if joinButton then
+            joinButton.Text = "Joining..."
+            joinButton.BackgroundColor3 = config.colors.accent
+        end
+    end
+    
+    if ui.statusLabel then
+        ui.statusLabel.Text = "Joining server..."
+    end
+    
+    -- Try to teleport
+    local success, error = pcall(function()
+        TeleportService:TeleportToPlaceInstance(placeId, jobId, Players.LocalPlayer)
+    end)
+    
+    -- Update UI if failed
+    if not success then
+        if ui.statusLabel then
+            ui.statusLabel.Text = "Failed to join: " .. tostring(error)
+        end
+        
+        if serverCard then
+            local joinButton = serverCard:FindFirstChild("JoinButton")
+            if joinButton then
+                joinButton.Text = "Join"
+                joinButton.BackgroundColor3 = config.colors.joinButton
+            end
+        end
+        
+        return false, error
+    end
+    
+    return true
+end
+
+-- Create a server card UI
+local function createServerCard(server, index)
+    local card = Instance.new("Frame")
+    card.Name = "ServerCard_" .. server.id
+    card.BackgroundColor3 = config.colors.serverCard
+    card.Size = UDim2.new(1, -16, 0, 100)
+    card.Position = UDim2.new(0, 8, 0, (index - 1) * 110 + 8)
+    card.Parent = ui.serverList
+    
+    -- Make it interactive
+    card.Active = true
+    card.Selectable = true
+    
+    -- Round the corners
+    roundCorners(card, 8)
+    
+    -- Add shadow
+    createShadow(card, 0.5, 3)
+    
+    -- Header with player count
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.BackgroundColor3 = config.colors.header
+    header.Size = UDim2.new(1, 0, 0, 30)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.Parent = card
+    roundCorners(header, 8)
+    
+    local playerCount = Instance.new("TextLabel")
+    playerCount.Name = "PlayerCount"
+    playerCount.BackgroundTransparency = 1
+    playerCount.Size = UDim2.new(0.5, 0, 1, 0)
+    playerCount.Position = UDim2.new(0, 10, 0, 0)
+    playerCount.Font = Enum.Font.GothamSemibold
+    playerCount.TextSize = 14
+    playerCount.TextColor3 = config.colors.text
+    playerCount.TextXAlignment = Enum.TextXAlignment.Left
+    playerCount.RichText = true
+    playerCount.Text = string.format("<b>Players:</b> %d/%d", server.playing, server.maxPlayers)
+    playerCount.Parent = header
+    
+    -- Ping display on the right
+    local pingDisplay = Instance.new("TextLabel")
+    pingDisplay.Name = "PingDisplay"
+    pingDisplay.BackgroundTransparency = 1
+    pingDisplay.Size = UDim2.new(0.5, -10, 1, 0)
+    pingDisplay.Position = UDim2.new(0.5, 0, 0, 0)
+    pingDisplay.Font = Enum.Font.GothamSemibold
+    pingDisplay.TextSize = 14
+    pingDisplay.TextColor3 = config.colors.text
+    pingDisplay.TextXAlignment = Enum.TextXAlignment.Right
+    pingDisplay.RichText = true
+    pingDisplay.Text = string.format("<b>Ping:</b> %s", getFormattedPing(server.ping))
+    pingDisplay.Parent = header
+    
+    -- Server details
+    local detailsFrame = Instance.new("Frame")
+    detailsFrame.Name = "Details"
+    detailsFrame.BackgroundTransparency = 1
+    detailsFrame.Size = UDim2.new(1, -160, 0, 60)
+    detailsFrame.Position = UDim2.new(0, 10, 0, 35)
+    detailsFrame.Parent = card
+    
+    -- FPS info
+    local fpsInfo = Instance.new("TextLabel")
+    fpsInfo.Name = "FPSInfo"
+    fpsInfo.BackgroundTransparency = 1
+    fpsInfo.Size = UDim2.new(1, 0, 0, 20)
+    fpsInfo.Position = UDim2.new(0, 0, 0, 0)
+    fpsInfo.Font = Enum.Font.Gotham
+    fpsInfo.TextSize = 14
+    fpsInfo.TextColor3 = config.colors.subText
+    fpsInfo.TextXAlignment = Enum.TextXAlignment.Left
+    fpsInfo.Text = string.format("FPS: %d", server.fps or 60)
+    fpsInfo.Parent = detailsFrame
+    
+    -- Server age
+    local serverAge = Instance.new("TextLabel")
+    serverAge.Name = "ServerAge"
+    serverAge.BackgroundTransparency = 1
+    serverAge.Size = UDim2.new(1, 0, 0, 20)
+    serverAge.Position = UDim2.new(0, 0, 0, 20)
+    serverAge.Font = Enum.Font.Gotham
+    serverAge.TextSize = 14
+    serverAge.TextColor3 = config.colors.subText
+    serverAge.TextXAlignment = Enum.TextXAlignment.Left
+    serverAge.Text = "Updated: " .. getTimeAgo(os.time() - (server.updateTime or os.time()))
+    serverAge.Parent = detailsFrame
+    
+    -- Player fill bar
+    local playerBarBackground = Instance.new("Frame")
+    playerBarBackground.Name = "PlayerBarBackground"
+    playerBarBackground.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    playerBarBackground.Size = UDim2.new(1, 0, 0, 6)
+    playerBarBackground.Position = UDim2.new(0, 0, 0, 45)
+    playerBarBackground.Parent = detailsFrame
+    roundCorners(playerBarBackground, 3)
+    
+    local fillRatio = server.playing / server.maxPlayers
+    local fillColor
+    
+    if fillRatio < 0.5 then
+        fillColor = Color3.fromRGB(100, 200, 100) -- Green for low population
+    elseif fillRatio < 0.8 then
+        fillColor = Color3.fromRGB(255, 200, 0) -- Yellow for medium population
+    else
+        fillColor = Color3.fromRGB(255, 100, 100) -- Red for high population
+    end
+    
+    local playerBarFill = Instance.new("Frame")
+    playerBarFill.Name = "PlayerBarFill"
+    playerBarFill.BackgroundColor3 = fillColor
+    playerBarFill.Size = UDim2.new(fillRatio, 0, 1, 0)
+    playerBarFill.Position = UDim2.new(0, 0, 0, 0)
+    playerBarFill.Parent = playerBarBackground
+    roundCorners(playerBarFill, 3)
+    
+    -- Join button
+    local joinButton = Instance.new("TextButton")
+    joinButton.Name = "JoinButton"
+    joinButton.BackgroundColor3 = config.colors.joinButton
+    joinButton.Size = UDim2.new(0, 120, 0, 35)
+    joinButton.Position = UDim2.new(1, -130, 0.5, -17.5)
+    joinButton.Font = Enum.Font.GothamBold
+    joinButton.TextSize = 14
+    joinButton.TextColor3 = config.colors.text
+    joinButton.Text = "Join"
+    joinButton.Parent = card
+    roundCorners(joinButton, 6)
+    createRippleEffect(joinButton)
+    
+    -- Hover effects
+    local hovering = false
+    
+    card.MouseEnter:Connect(function()
+        hovering = true
+        card.BackgroundColor3 = config.colors.serverCardHover
+    end)
+    
+    card.MouseLeave:Connect(function()
+        hovering = false
+        card.BackgroundColor3 = config.colors.serverCard
+    end)
+    
+    joinButton.MouseEnter:Connect(function()
+        joinButton.BackgroundColor3 = config.colors.joinButtonHover
+    end)
+    
+    joinButton.MouseLeave:Connect(function()
+        joinButton.BackgroundColor3 = config.colors.joinButton
+    end)
+    
+    -- Join button click event
+    joinButton.MouseButton1Click:Connect(function()
+        ServerBrowserModule.JoinServer(server.id, game.PlaceId, card)
+    end)
+    
+    return card
+end
+
+-- Update the server list display
+function ServerBrowserModule.UpdateServerList()
+    -- Clear existing server cards
+    for _, card in pairs(ui.serverCards) do
+        card:Destroy()
+    end
+    ui.serverCards = {}
+    
+    -- Get current page of servers
+    local startIndex = (state.currentPage - 1) * state.serversPerPage + 1
+    local endIndex = math.min(startIndex + state.serversPerPage - 1, #state.filteredServers)
+    
+    -- Update page info
+    if ui.statusLabel then
+        if #state.filteredServers == 0 then
+            ui.statusLabel.Text = "No servers found"
+        else
+            local totalPages = math.ceil(#state.filteredServers / state.serversPerPage)
+            ui.statusLabel.Text = string.format("Showing %d-%d of %d servers (Page %d/%d)", 
+                startIndex, endIndex, #state.filteredServers, state.currentPage, totalPages)
+        end
+    end
+    
+    -- Create server cards for current page
+    for i = startIndex, endIndex do
+        local server = state.filteredServers[i]
+        local card = createServerCard(server, i - startIndex + 1)
+        table.insert(ui.serverCards, card)
+    end
+    
+    -- Update page buttons
+    local totalPages = math.ceil(#state.filteredServers / state.serversPerPage)
+    
+    if ui.pageButtons.prev then
+        ui.pageButtons.prev.Visible = state.currentPage > 1
+    end
+    
+    if ui.pageButtons.next then
+        ui.pageButtons.next.Visible = state.currentPage < totalPages
+    end
+    
+    if ui.pageButtons.pageInfo then
+        ui.pageButtons.pageInfo.Text = string.format("Page %d of %d", state.currentPage, math.max(1, totalPages))
+    end
+    
+    -- Resize the server list to fit content
+    if ui.serverList then
+        if #ui.serverCards > 0 then
+            ui.serverList.CanvasSize = UDim2.new(0, 0, 0, (#ui.serverCards * 110) + 8)
+        else
+            ui.serverList.CanvasSize = UDim2.new(0, 0, 0, 50)  -- Minimum size
+        end
+    end
+end
+
+-- Create the server browser UI
+function ServerBrowserModule.CreateUI()
+    -- Remove any existing UI
+    ServerBrowserModule.DestroyUI()
+    
+    -- Create ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = config.uiName
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.ResetOnSpawn = false
+    
+    -- Parent the ScreenGui to CoreGui or PlayerGui
+    pcall(function()
+        screenGui.Parent = CoreGui
+    end)
+    
+    if not screenGui.Parent then
+        screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+    
+    -- Create the main frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.BackgroundColor3 = config.colors.background
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Position = UDim2.new(0.5, -300, 0.5, -225)
+    mainFrame.Size = UDim2.new(0, 600, 0, 450)
+    mainFrame.Visible = false
+    mainFrame.Parent = screenGui
+    roundCorners(mainFrame, 10)
+    
+    -- Add shadow
+    createShadow(mainFrame, 0.4, 5)
+    
+    -- Make frame draggable
+    mainFrame.Active = true
+    mainFrame.Draggable = false  -- We'll handle dragging manually
+    
+    -- Header
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.BackgroundColor3 = config.colors.header
+    header.Size = UDim2.new(1, 0, 0, 40)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.Parent = mainFrame
+    roundCorners(header, 10)
+    
+    -- Header title
+    local headerTitle = Instance.new("TextLabel")
+    headerTitle.Name = "Title"
+    headerTitle.BackgroundTransparency = 1
+    headerTitle.Size = UDim2.new(1, -100, 1, 0)
+    headerTitle.Position = UDim2.new(0, 15, 0, 0)
+    headerTitle.Font = Enum.Font.GothamBold
+    headerTitle.TextSize = 18
+    headerTitle.TextColor3 = config.colors.text
+    headerTitle.TextXAlignment = Enum.TextXAlignment.Left
+    headerTitle.Text = "Server Browser"
+    headerTitle.Parent = header
+    
+    -- Make header draggable
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            state.isDragging = true
+            state.dragOffset = input.Position - mainFrame.Position
+        end
+    end)
+    
+    header.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            state.isDragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if state.isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            mainFrame.Position = UDim2.new(
+                0, input.Position.X - state.dragOffset.X,
+                0, input.Position.Y - state.dragOffset.Y
+            )
+        end
+    end)
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -40, 0, 5)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 18
+    closeButton.TextColor3 = config.colors.text
+    closeButton.Text = "X"
+    closeButton.Parent = header
+    roundCorners(closeButton, 15)
+    
+    closeButton.MouseEnter:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    end)
+    
+    closeButton.MouseLeave:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    end)
+    
+    closeButton.MouseButton1Click:Connect(function()
+        ServerBrowserModule.ToggleUI(false)
+    end)
+    
+    -- Search bar
+    local searchBar = Instance.new("Frame")
+    searchBar.Name = "SearchBar"
+    searchBar.BackgroundColor3 = config.colors.button
+    searchBar.Size = UDim2.new(1, -20, 0, 36)
+    searchBar.Position = UDim2.new(0, 10, 0, 50)
+    searchBar.Parent = mainFrame
+    roundCorners(searchBar, 6)
+    
+    local searchIcon = Instance.new("ImageLabel")
+    searchIcon.Name = "SearchIcon"
+    searchIcon.BackgroundTransparency = 1
+    searchIcon.Size = UDim2.new(0, 20, 0, 20)
+    searchIcon.Position = UDim2.new(0, 10, 0, 8)
+    searchIcon.Image = "rbxassetid://3926305904"
+    searchIcon.ImageRectOffset = Vector2.new(964, 324)
+    searchIcon.ImageRectSize = Vector2.new(36, 36)
+    searchIcon.ImageColor3 = config.colors.subText
+    searchIcon.Parent = searchBar
+    
+    local searchInput = Instance.new("TextBox")
+    searchInput.Name = "SearchInput"
+    searchInput.BackgroundTransparency = 1
+    searchInput.Size = UDim2.new(1, -50, 1, 0)
+    searchInput.Position = UDim2.new(0, 40, 0, 0)
+    searchInput.Font = Enum.Font.Gotham
+    searchInput.TextSize = 14
+    searchInput.TextColor3 = config.colors.text
+    searchInput.PlaceholderText = "Search servers..."
+    searchInput.PlaceholderColor3 = config.colors.subText
+    searchInput.Text = ""
+    searchInput.TextXAlignment = Enum.TextXAlignment.Left
+    searchInput.Parent = searchBar
+    
+    searchInput.Changed:Connect(function(prop)
+        if prop == "Text" then
+            state.searchQuery = searchInput.Text:lower()
+            state.filteredServers = ServerBrowserModule.FilterAndSortServers()
+            state.currentPage = 1
+            ServerBrowserModule.UpdateServerList()
+        end
+    end)
+    
+    -- Sort buttons row
+    local sortRow = Instance.new("Frame")
+    sortRow.Name = "SortRow"
+    sortRow.BackgroundTransparency = 1
+    sortRow.Size = UDim2.new(1, -20, 0, 30)
+    sortRow.Position = UDim2.new(0, 10, 0, 95)
+    sortRow.Parent = mainFrame
+    
+    local function createSortButton(text, sortKey, position)
+        local button = Instance.new("TextButton")
+        button.Name = "SortButton_" .. sortKey
+        button.BackgroundColor3 = state.sortOption == sortKey and config.colors.accent or config.colors.button
+        button.Size = UDim2.new(0, 130, 1, 0)
+        button.Position = UDim2.new(0, position, 0, 0)
+        button.Font = Enum.Font.GothamSemibold
+        button.TextSize = 12
+        button.TextColor3 = config.colors.text
+        button.Text = text
+        button.Parent = sortRow
+        roundCorners(button, 4)
+        createRippleEffect(button)
+        
+        button.MouseEnter:Connect(function()
+            if state.sortOption ~= sortKey then
+                button.BackgroundColor3 = config.colors.buttonHover
+            end
+        end)
+        
+        button.MouseLeave:Connect(function()
+            if state.sortOption ~= sortKey then
+                button.BackgroundColor3 = config.colors.button
+            end
+        end)
+        
+        button.MouseButton1Click:Connect(function()
+            -- Toggle between ascending and descending if clicking the same button
+            if state.sortOption == sortKey then
+                if sortKey:find("_desc") then
+                    state.sortOption = sortKey:gsub("_desc", "_asc")
+                else
+                    state.sortOption = sortKey:gsub("_asc", "_desc")
+                end
+            else
+                state.sortOption = sortKey
+            end
+            
+            -- Update button appearances
+            for _, btn in pairs(ui.sortButtons) do
+                if btn.Name == "SortButton_" .. state.sortOption then
+                    btn.BackgroundColor3 = config.colors.accent
+                else
+                    btn.BackgroundColor3 = config.colors.button
+                end
+            end
+            
+            -- Update server list
+            state.filteredServers = ServerBrowserModule.FilterAndSortServers()
+            ServerBrowserModule.UpdateServerList()
+        end)
+        
+        ui.sortButtons[sortKey] = button
+        return button
+    end
+    
+    createSortButton("Players ↓", "players_desc", 0)
+    createSortButton("Ping ↓", "ping_asc", 140)
+    createSortButton("FPS ↓", "fps_desc", 280)
+    
+    -- Refresh button
+    local refreshButton = Instance.new("TextButton")
+    refreshButton.Name = "RefreshButton"
+    refreshButton.BackgroundColor3 = config.colors.button
+    refreshButton.Size = UDim2.new(0, 130, 1, 0)
+    refreshButton.Position = UDim2.new(1, -130, 0, 0)
+    refreshButton.Font = Enum.Font.GothamSemibold
+    refreshButton.TextSize = 12
+    refreshButton.TextColor3 = config.colors.text
+    refreshButton.Text = "Refresh"
+    refreshButton.Parent = sortRow
+    roundCorners(refreshButton, 4)
+    createRippleEffect(refreshButton)
+    
+    refreshButton.MouseEnter:Connect(function()
+        refreshButton.BackgroundColor3 = config.colors.buttonHover
+    end)
+    
+    refreshButton.MouseLeave:Connect(function()
+        refreshButton.BackgroundColor3 = config.colors.button
+    end)
+    
+    refreshButton.MouseButton1Click:Connect(function()
+        -- Disable the button temporarily to prevent spam
+        refreshButton.BackgroundColor3 = config.colors.subText
+        refreshButton.Text = "Refreshing..."
+        refreshButton.Active = false
+        
+        ServerBrowserModule.FetchServers(game.PlaceId, 100, function()
+            refreshButton.Text = "Refresh"
+            refreshButton.BackgroundColor3 = config.colors.button
+            refreshButton.Active = true
+            state.nextAutoRefresh = os.time() + state.autoRefreshInterval
+        end)
+    end)
+    
+    -- Server list container
+    local serverListContainer = Instance.new("Frame")
+    serverListContainer.Name = "ServerListContainer"
+    serverListContainer.BackgroundTransparency = 1
+    serverListContainer.Size = UDim2.new(1, -20, 0, 270)
+    serverListContainer.Position = UDim2.new(0, 10, 0, 135)
+    serverListContainer.Parent = mainFrame
+    
+    -- Server list scrolling frame
+    local serverList = Instance.new("ScrollingFrame")
+    serverList.Name = "ServerList"
+    serverList.BackgroundColor3 = config.colors.header
+    serverList.BorderSizePixel = 0
+    serverList.Size = UDim2.new(1, 0, 1, 0)
+    serverList.Position = UDim2.new(0, 0, 0, 0)
+    serverList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    serverList.ScrollBarThickness = 6
+    serverList.ScrollBarImageColor3 = config.colors.accent
+    serverList.Parent = serverListContainer
+    roundCorners(serverList, 8)
+    
+    -- Status bar at the bottom
+    local statusBar = Instance.new("Frame")
+    statusBar.Name = "StatusBar"
+    statusBar.BackgroundColor3 = config.colors.header
+    statusBar.Size = UDim2.new(1, -20, 0, 30)
+    statusBar.Position = UDim2.new(0, 10, 1, -35)
+    statusBar.Parent = mainFrame
+    roundCorners(statusBar, 6)
+    
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    statusLabel.Position = UDim2.new(0, 10, 0, 0)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextSize = 14
+    statusLabel.TextColor3 = config.colors.subText
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Text = "Ready to search for servers"
+    statusLabel.Parent = statusBar
+    
+    -- Loading indicator
+    local loadingIndicator = Instance.new("ImageLabel")
+    loadingIndicator.Name = "LoadingIndicator"
+    loadingIndicator.BackgroundTransparency = 1
+    loadingIndicator.Size = UDim2.new(0, 20, 0, 20)
+    loadingIndicator.Position = UDim2.new(1, -30, 0, 5)
+    loadingIndicator.Image = "rbxassetid://4456891092"
+    loadingIndicator.ImageColor3 = config.colors.loading
+    loadingIndicator.Visible = false
+    loadingIndicator.Parent = statusBar
+    
+    -- Animate the loading indicator
+    local loadingTween = TweenService:Create(
+        loadingIndicator,
+        TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), -- -1 for infinite repeats
+        {Rotation = 360}
+    )
+    loadingTween:Play()
+    
+    -- Pagination controls
+    local paginationContainer = Instance.new("Frame")
+    paginationContainer.Name = "PaginationContainer"
+    paginationContainer.BackgroundTransparency = 1
+    paginationContainer.Size = UDim2.new(0.4, 0, 1, 0)
+    paginationContainer.Position = UDim2.new(0.6, 0, 0, 0)
+    paginationContainer.Parent = statusBar
+    
+    -- Previous page button
+    local prevButton = Instance.new("TextButton")
+    prevButton.Name = "PrevButton"
+    prevButton.BackgroundColor3 = config.colors.button
+    prevButton.Size = UDim2.new(0, 30, 0, 20)
+    prevButton.Position = UDim2.new(0, 0, 0.5, -10)
+    prevButton.Font = Enum.Font.GothamBold
+    prevButton.TextSize = 14
+    prevButton.TextColor3 = config.colors.text
+    prevButton.Text = "◀"
+    prevButton.Visible = false
+    prevButton.Parent = paginationContainer
+    roundCorners(prevButton, 4)
+    
+    prevButton.MouseEnter:Connect(function()
+        prevButton.BackgroundColor3 = config.colors.buttonHover
+    end)
+    
+    prevButton.MouseLeave:Connect(function()
+        prevButton.BackgroundColor3 = config.colors.button
+    end)
+    
+    prevButton.MouseButton1Click:Connect(function()
+        if state.currentPage > 1 then
+            state.currentPage = state.currentPage - 1
+            ServerBrowserModule.UpdateServerList()
+        end
+    end)
+    
+    -- Page info
+    local pageInfo = Instance.new("TextLabel")
+    pageInfo.Name = "PageInfo"
+    pageInfo.BackgroundTransparency = 1
+    pageInfo.Size = UDim2.new(0, 120, 1, 0)
+    pageInfo.Position = UDim2.new(0.5, -60, 0, 0)
+    pageInfo.Font = Enum.Font.Gotham
+    pageInfo.TextSize = 14
+    pageInfo.TextColor3 = config.colors.text
+    pageInfo.Text = "Page 0 of 0"
+    pageInfo.Parent = paginationContainer
+    
+    -- Next page button
+    local nextButton = Instance.new("TextButton")
+    nextButton.Name = "NextButton"
+    nextButton.BackgroundColor3 = config.colors.button
+    nextButton.Size = UDim2.new(0, 30, 0, 20)
+    nextButton.Position = UDim2.new(1, -30, 0.5, -10)
+    nextButton.Font = Enum.Font.GothamBold
+    nextButton.TextSize = 14
+    nextButton.TextColor3 = config.colors.text
+    nextButton.Text = "▶"
+    nextButton.Visible = false
+    nextButton.Parent = paginationContainer
+    roundCorners(nextButton, 4)
+    
+    nextButton.MouseEnter:Connect(function()
+        nextButton.BackgroundColor3 = config.colors.buttonHover
+    end)
+    
+    nextButton.MouseLeave:Connect(function()
+        nextButton.BackgroundColor3 = config.colors.button
+    end)
+    
+    nextButton.MouseButton1Click:Connect(function()
+        local totalPages = math.ceil(#state.filteredServers / state.serversPerPage)
+        if state.currentPage < totalPages then
+            state.currentPage = state.currentPage + 1
+            ServerBrowserModule.UpdateServerList()
+        end
+    end)
+    
+    -- Store UI elements for later use
+    ui.mainFrame = mainFrame
+    ui.serverList = serverList
+    ui.refreshButton = refreshButton
+    ui.closeButton = closeButton
+    ui.searchBar = searchInput
+    ui.loadingIndicator = loadingIndicator
+    ui.statusLabel = statusLabel
+    ui.pageButtons = {
+        prev = prevButton,
+        next = nextButton,
+        pageInfo = pageInfo
+    }
+    
+    -- Auto-refresh handler
+    local autoRefreshConnection = RunService.Heartbeat:Connect(function()
+        if state.isVisible and not state.isLoading and os.time() > state.nextAutoRefresh then
+            state.nextAutoRefresh = os.time() + state.autoRefreshInterval
+            ServerBrowserModule.FetchServers(game.PlaceId, 100)
+        end
+    end)
+    
+    -- Store the connection so we can disconnect it later
+    state.autoRefreshConnection = autoRefreshConnection
+    
+    return screenGui
+end
+
+-- Show/hide the server browser UI
+function ServerBrowserModule.ToggleUI(visible)
+    if visible == nil then
+        visible = not state.isVisible
+    end
+    
+    if not ui.mainFrame then
+        ServerBrowserModule.CreateUI()
+    end
+    
+    ui.mainFrame.Visible = visible
+    state.isVisible = visible
+    
+    -- If showing the UI, refresh server list
+    if visible and (#state.servers == 0 or os.time() > state.nextAutoRefresh) then
+        state.nextAutoRefresh = os.time() + state.autoRefreshInterval
+        ServerBrowserModule.FetchServers(game.PlaceId, 100)
+    end
+    
+    return visible
+end
+
+-- Destroy the UI
+function ServerBrowserModule.DestroyUI()
+    if state.autoRefreshConnection then
+        state.autoRefreshConnection:Disconnect()
+        state.autoRefreshConnection = nil
+    end
+    
+    local existingUI = CoreGui:FindFirstChild(config.uiName) or
+                      Players.LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild(config.uiName)
+    
+    if existingUI then
+        existingUI:Destroy()
+    end
+    
+    -- Reset UI elements
+    ui.mainFrame = nil
+    ui.serverList = nil
+    ui.serverCards = {}
+    ui.refreshButton = nil
+    ui.closeButton = nil
+    ui.sortButtons = {}
+    ui.searchBar = nil
+    ui.loadingIndicator = nil
+    ui.statusLabel = nil
+    ui.pageButtons = {}
+    
+    state.isVisible = false
+end
+
+-- Initialize theme with custom colors (optional)
+function ServerBrowserModule.SetTheme(theme)
+    if type(theme) == "table" then
+        for key, color in pairs(theme) do
+            if config.colors[key] then
+                if typeof(color) == "Color3" then
+                    config.colors[key] = color
+                end
+            end
+        end
+    end
+end
+
+-- Initialize the module
+function ServerBrowserModule.Init()
+    -- Cleanup any existing UI
+    ServerBrowserModule.DestroyUI()
+    
+    -- Set default state values
+    state.servers = {}
+    state.filteredServers = {}
+    state.sortOption = "players_desc"
+    state.searchQuery = ""
+    state.isLoading = false
+    state.currentPage = 1
+    state.isVisible = false
+    state.nextAutoRefresh = 0
+end
+
+return ServerBrowserModule
