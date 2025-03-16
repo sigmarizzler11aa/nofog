@@ -7,7 +7,7 @@ local AutoStoreModule = {}
 local config = {
     checkInterval = 0.2, -- Time between checks in seconds
     maxDistance = 30, -- Maximum distance to auto-store items (in studs)
-    cooldown = 0.1, -- Cooldown between storing individual items (in seconds)
+    cooldown = 0.2, -- Cooldown between storing individual items (in seconds)
     debugMode = false -- Set to true for debug prints
 }
 
@@ -16,10 +16,12 @@ local state = {
     enabled = {
         junk = false,
         valuables = false,
-        anything = false
+        anything = false,
+        tools = false -- Added for auto-pickup tools
     },
     connection = nil,
-    lastStoreTime = 0
+    lastStoreTime = 0,
+    lastPickupTime = 0 -- Added for tool pickup cooldown
 }
 
 -- Helper function to check nil instances
@@ -93,6 +95,28 @@ local function getItemType(objectInfo)
     return "Unknown"
 end
 
+-- Function to check if an item is a tool
+local function isTool(model)
+    -- Check if the model has basic tool characteristics
+    -- This can be customized based on the game's tool structure
+    if model:FindFirstChild("Handle") then
+        return true
+    end
+    
+    -- Check for specific tool names or properties
+    local toolNames = {
+        "Shovel", "Pickaxe", "Axe", "Gun", "Revolver", "Rifle", "Knife"
+    }
+    
+    for _, name in ipairs(toolNames) do
+        if model.Name:find(name) then
+            return true
+        end
+    end
+    
+    return false
+end
+
 -- Function to store an item
 local function storeItem(item)
     -- Check cooldown
@@ -124,47 +148,115 @@ local function storeItem(item)
     return success
 end
 
+-- Function to pick up a tool
+local function pickupTool(tool)
+    -- Check cooldown
+    local currentTime = tick()
+    if currentTime - state.lastPickupTime < config.cooldown then
+        return false
+    end
+    
+    -- Update last pickup time
+    state.lastPickupTime = currentTime
+    
+    -- Pick up the tool
+    local args = {
+        [1] = tool
+    }
+    
+    local success, errorMsg = pcall(function()
+        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Tool"):WaitForChild("PickUpTool"):FireServer(unpack(args))
+    end)
+    
+    if config.debugMode then
+        if success then
+            print("Picked up tool: " .. tool.Name)
+        else
+            warn("Failed to pick up tool: " .. errorMsg)
+        end
+    end
+    
+    return success
+end
+
 -- Main checking function
 local function checkItems()
-    if not workspace:FindFirstChild("RuntimeItems") then
+    local player = game.Players.LocalPlayer
+    if not player or not player.Character then
         return
     end
     
-    for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
-        if model:IsA("Model") and model:FindFirstChild("ObjectInfo") then
-            -- Check if item is in range
-            if not isInRange(model) then
-                continue
+    -- Check RuntimeItems for items to store
+    if workspace:FindFirstChild("RuntimeItems") then
+        for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
+            if model:IsA("Model") and model:FindFirstChild("ObjectInfo") then
+                -- Check if item is in range
+                if not isInRange(model) then
+                    continue
+                end
+                
+                -- Get item type
+                local itemType = getItemType(model.ObjectInfo)
+                
+                -- Determine if we should store based on enabled options
+                local shouldStore = false
+                
+                if state.enabled.anything then
+                    shouldStore = true
+                elseif itemType == "Junk" and state.enabled.junk then
+                    shouldStore = true
+                elseif itemType == "Valuable" and state.enabled.valuables then
+                    shouldStore = true
+                end
+                
+                -- Store the item if criteria met
+                if shouldStore then
+                    storeItem(model)
+                    -- Small delay to prevent overwhelming the server
+                    wait(config.cooldown)
+                end
             end
-            
-            -- Get item type
-            local itemType = getItemType(model.ObjectInfo)
-            
-            -- Determine if we should store based on enabled options
-            local shouldStore = false
-            
-            if state.enabled.anything then
-                shouldStore = true
-            elseif itemType == "Junk" and state.enabled.junk then
-                shouldStore = true
-            elseif itemType == "Valuable" and state.enabled.valuables then
-                shouldStore = true
-            end
-            
-            -- Store the item if criteria met
-            if shouldStore then
-                storeItem(model)
-                -- Small delay to prevent overwhelming the server
+        end
+    end
+    
+    -- Check for tools to pick up if enabled
+    if state.enabled.tools then
+        -- First check regular workspace items
+        for _, model in pairs(workspace:GetChildren()) do
+            if model:IsA("Model") and isTool(model) and isInRange(model) then
+                pickupTool(model)
                 wait(config.cooldown)
             end
         end
+        
+        -- Also check in RuntimeItems
+        if workspace:FindFirstChild("RuntimeItems") then
+            for _, model in pairs(workspace.RuntimeItems:GetChildren()) do
+                if model:IsA("Model") and isTool(model) and isInRange(model) then
+                    pickupTool(model)
+                    wait(config.cooldown)
+                end
+            end
+        end
+        
+        -- Check nil instances for tools (if they might be in nil instances)
+        pcall(function()
+            local toolNames = {"Shovel", "Pickaxe", "Axe", "Gun", "Revolver", "Rifle", "Knife"}
+            for _, toolName in ipairs(toolNames) do
+                local nilTool = getNil(toolName, "Model")
+                if nilTool and isInRange(nilTool) then
+                    pickupTool(nilTool)
+                    wait(config.cooldown)
+                end
+            end
+        end)
     end
 end
 
 -- Function to update auto-store loop
 function AutoStoreModule.UpdateAutoStoreLoop()
-    -- If any auto-store options are enabled, start the loop
-    if state.enabled.junk or state.enabled.valuables or state.enabled.anything then
+    -- If any auto options are enabled, start the loop
+    if state.enabled.junk or state.enabled.valuables or state.enabled.anything or state.enabled.tools then
         -- Disconnect any existing connection
         if state.connection then
             state.connection:Disconnect()
@@ -206,6 +298,12 @@ function AutoStoreModule.ToggleAnything(enable)
     return state.enabled.anything
 end
 
+function AutoStoreModule.ToggleTools(enable)
+    state.enabled.tools = enable
+    AutoStoreModule.UpdateAutoStoreLoop()
+    return state.enabled.tools
+end
+
 -- Check if options are enabled
 function AutoStoreModule.IsJunkEnabled()
     return state.enabled.junk
@@ -217,6 +315,10 @@ end
 
 function AutoStoreModule.IsAnythingEnabled()
     return state.enabled.anything
+end
+
+function AutoStoreModule.IsToolsEnabled()
+    return state.enabled.tools
 end
 
 -- Set the max distance for auto-store
@@ -256,6 +358,7 @@ function AutoStoreModule.Cleanup()
     state.enabled.junk = false
     state.enabled.valuables = false
     state.enabled.anything = false
+    state.enabled.tools = false
 end
 
 -- Initialize the module
