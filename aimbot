@@ -3,39 +3,35 @@ local aimbotEnabled = false
 local aimbotTarget = nil
 local aimbotConnection = nil
 local isAiming = false
-local originalCameraSubject = nil
-local originalCameraType = nil
-
 function Aimbot.Init()
     return Aimbot
 end
-
 -- Function to find the humanoid closest to the mouse cursor
 function Aimbot.GetClosestTarget()
     local player = game.Players.LocalPlayer
     local mouse = player:GetMouse()
     local camera = workspace.CurrentCamera
-    
+
     local closestDistanceToMouse = math.huge
     local closestHumanoid = nil
-    
+
     for _, model in pairs(workspace:GetDescendants()) do
         if model:IsA("Model") and 
            model ~= player.Character and 
            model:FindFirstChild("Humanoid") and 
            model:FindFirstChild("HumanoidRootPart") and
            model.Humanoid.Health > 0 then
-           
+
             -- Get the screen position of the target
             local screenPoint, onScreen = camera:WorldToScreenPoint(model.HumanoidRootPart.Position)
-            
+
             -- Check if the target is in front of the camera and on screen
             if onScreen and screenPoint.Z > 0 then
                 -- Calculate distance between mouse and target on screen
                 local mouseDistX = (screenPoint.X - mouse.X)
                 local mouseDistY = (screenPoint.Y - mouse.Y)
                 local mouseDistance = math.sqrt(mouseDistX^2 + mouseDistY^2)
-                
+
                 if mouseDistance < closestDistanceToMouse then
                     closestDistanceToMouse = mouseDistance
                     closestHumanoid = model
@@ -43,69 +39,40 @@ function Aimbot.GetClosestTarget()
             end
         end
     end
-    
+
     return closestHumanoid
 end
-
--- Function to position camera above and behind the target (spectate view)
-function Aimbot.SpectateTarget(target)
+-- Function to aim at a target
+function Aimbot.AimAt(target)
     if not target then return end
-    
-    local camera = game.Workspace.CurrentCamera
+
     local player = game.Players.LocalPlayer
-    
-    -- Store original camera settings if not already stored
-    if not originalCameraType then
-        originalCameraType = camera.CameraType
-        originalCameraSubject = camera.CameraSubject
-    end
-    
-    -- Get target's humanoid root part
+    local camera = game.Workspace.CurrentCamera
+    local character = player.Character
+
+    if not character or not character:FindFirstChild("Humanoid") then return end
+
     local targetHRP = target:FindFirstChild("HumanoidRootPart")
     if not targetHRP then return end
-    
-    -- Set camera type to scriptable to manually position it
-    camera.CameraType = Enum.CameraType.Scriptable
-    
-    -- Calculate direction the target is facing
-    local lookVector = targetHRP.CFrame.LookVector
-    
-    -- Calculate position behind and above the target
-    local cameraPosition = targetHRP.Position - (lookVector * 10) + Vector3.new(0, 5, 0)
-    
-    -- Set camera CFrame to look at the target from the calculated position
-    camera.CFrame = CFrame.new(cameraPosition, targetHRP.Position)
-end
 
--- Function to reset camera to normal
-function Aimbot.ResetCamera()
-    local camera = game.Workspace.CurrentCamera
-    local player = game.Players.LocalPlayer
-    
-    -- Restore original camera settings
-    if originalCameraType then
-        camera.CameraType = originalCameraType
-    end
-    
-    if originalCameraSubject then
-        camera.CameraSubject = originalCameraSubject
-    elseif player and player.Character and player.Character:FindFirstChild("Humanoid") then
-        -- Fallback to player's humanoid if original subject is no longer valid
-        camera.CameraSubject = player.Character.Humanoid
-    end
-end
+    -- Calculate the look vector to aim at the target
+    local lookVector = (targetHRP.Position - camera.CFrame.Position).Unit
+    local newCFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + lookVector)
 
+    -- Set camera CFrame to look at target
+    camera.CFrame = newCFrame
+end
 -- Activation function
 function Aimbot.Enable()
     aimbotEnabled = true
-    
+
     if aimbotConnection then
         aimbotConnection:Disconnect()
     end
-    
+
     aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
         local UserInputService = game:GetService("UserInputService")
-        
+
         -- Check if E key is pressed
         if UserInputService:IsKeyDown(Enum.KeyCode.E) then
             -- If not already aiming or if target died, get a new target
@@ -113,46 +80,36 @@ function Aimbot.Enable()
                 aimbotTarget = Aimbot.GetClosestTarget()
                 isAiming = true
             end
-            
-            -- If we have a valid target, spectate it
+
+            -- If we have a valid target, aim at it
             if aimbotTarget and aimbotTarget:FindFirstChild("Humanoid") and aimbotTarget.Humanoid.Health > 0 then
-                Aimbot.SpectateTarget(aimbotTarget)
+                Aimbot.AimAt(aimbotTarget)
             else
                 -- Target is dead, reset
                 isAiming = false
                 aimbotTarget = nil
-                Aimbot.ResetCamera()
             end
         else
             -- E key released, reset targeting
-            if isAiming then
-                Aimbot.ResetCamera()
-            end
             isAiming = false
             aimbotTarget = nil
         end
     end)
 end
-
 -- Deactivation function
 function Aimbot.Disable()
     aimbotEnabled = false
-    
+
     if aimbotConnection then
         aimbotConnection:Disconnect()
         aimbotConnection = nil
     end
-    
-    -- Reset camera when disabled
-    Aimbot.ResetCamera()
-    
+
     isAiming = false
     aimbotTarget = nil
 end
-
 -- Current status
 function Aimbot.IsEnabled()
     return aimbotEnabled
 end
-
 return Aimbot.Init()
