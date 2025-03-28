@@ -5,6 +5,8 @@ local aimbotConnection = nil
 local isAiming = false
 local originalCameraSubject = nil
 local originalCameraType = nil
+local cameraOffsetHeight = 5 -- Default height above target
+local cameraOffsetDistance = 10 -- Default distance behind target
 
 function Aimbot2.Init()
     return Aimbot2
@@ -83,8 +85,8 @@ function Aimbot2.SpectateTarget(target)
         lookVector = targetPart.CFrame.LookVector
     end
     
-    -- Calculate position behind and above the target
-    local cameraPosition = targetPart.Position - (lookVector * 10) + Vector3.new(0, 5, 0)
+    -- Calculate position behind and above the target using the configurable values
+    local cameraPosition = targetPart.Position - (lookVector * cameraOffsetDistance) + Vector3.new(0, cameraOffsetHeight, 0)
     
     -- Set camera CFrame to look at the target's head from the calculated position
     camera.CFrame = CFrame.new(cameraPosition, targetPart.Position)
@@ -98,6 +100,9 @@ function Aimbot2.ResetCamera()
     -- Restore original camera settings
     if originalCameraType then
         camera.CameraType = originalCameraType
+    else
+        -- Default to classic camera type if original wasn't stored
+        camera.CameraType = Enum.CameraType.Custom
     end
     
     if originalCameraSubject then
@@ -105,6 +110,20 @@ function Aimbot2.ResetCamera()
     elseif player and player.Character and player.Character:FindFirstChild("Humanoid") then
         -- Fallback to player's humanoid if original subject is no longer valid
         camera.CameraSubject = player.Character.Humanoid
+    end
+    
+    -- Force reset camera to player's character view
+    if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+        -- Ensure the character has a humanoid
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        camera.CameraSubject = humanoid
+        
+        -- Reset to default camera type (just to be sure)
+        camera.CameraType = Enum.CameraType.Custom
+        
+        -- Clear the internal variables 
+        originalCameraType = nil
+        originalCameraSubject = nil
     end
 end
 
@@ -166,6 +185,27 @@ end
 -- Current status
 function Aimbot2.IsEnabled()
     return aimbotEnabled
+end
+
+-- Functions to set camera offset values
+function Aimbot2.SetCameraHeight(height)
+    if type(height) == "number" then
+        cameraOffsetHeight = height
+    end
+end
+
+function Aimbot2.SetCameraDistance(distance)
+    if type(distance) == "number" then
+        cameraOffsetDistance = distance
+    end
+end
+
+function Aimbot2.GetCameraHeight()
+    return cameraOffsetHeight
+end
+
+function Aimbot2.GetCameraDistance()
+    return cameraOffsetDistance
 end
 
 return Aimbot2.Init()
