@@ -26,8 +26,11 @@ function Aimbot2.GetClosestTarget()
            model:FindFirstChild("HumanoidRootPart") and
            model.Humanoid.Health > 0 then
            
-            -- Get the screen position of the target
-            local screenPoint, onScreen = camera:WorldToScreenPoint(model.HumanoidRootPart.Position)
+            -- Prioritize head if it exists, otherwise use HumanoidRootPart
+            local targetPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+            
+            -- Get the screen position of the target's head/part
+            local screenPoint, onScreen = camera:WorldToScreenPoint(targetPart.Position)
             
             -- Check if the target is in front of the camera and on screen
             if onScreen and screenPoint.Z > 0 then
@@ -60,21 +63,31 @@ function Aimbot2.SpectateTarget(target)
         originalCameraSubject = camera.CameraSubject
     end
     
-    -- Get target's humanoid root part
+    -- Get target's head (or fall back to HumanoidRootPart if no head)
+    local targetHead = target:FindFirstChild("Head")
     local targetHRP = target:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
+    
+    if not targetHead and not targetHRP then return end
+    
+    -- Use head if available, otherwise use HumanoidRootPart
+    local targetPart = targetHead or targetHRP
     
     -- Set camera type to scriptable to manually position it
     camera.CameraType = Enum.CameraType.Scriptable
     
     -- Calculate direction the target is facing
-    local lookVector = targetHRP.CFrame.LookVector
+    local lookVector
+    if targetHRP then
+        lookVector = targetHRP.CFrame.LookVector -- Use HRP for direction even if targeting head
+    else
+        lookVector = targetPart.CFrame.LookVector
+    end
     
     -- Calculate position behind and above the target
-    local cameraPosition = targetHRP.Position - (lookVector * 10) + Vector3.new(0, 5, 0)
+    local cameraPosition = targetPart.Position - (lookVector * 10) + Vector3.new(0, 5, 0)
     
-    -- Set camera CFrame to look at the target from the calculated position
-    camera.CFrame = CFrame.new(cameraPosition, targetHRP.Position)
+    -- Set camera CFrame to look at the target's head from the calculated position
+    camera.CFrame = CFrame.new(cameraPosition, targetPart.Position)
 end
 
 -- Function to reset camera to normal
