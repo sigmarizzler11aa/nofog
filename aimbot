@@ -1,9 +1,10 @@
 local Aimbot = {}
-
 local aimbotEnabled = false
 local aimbotTarget = nil
 local aimbotConnection = nil
 local isAiming = false
+local originalFOV = nil -- Store original camera FOV
+local zoomFOV = 30 -- Zoomed FOV value (lower = more zoom)
 
 function Aimbot.Init()
     return Aimbot
@@ -65,6 +66,20 @@ function Aimbot.AimAt(target)
     
     -- Set camera CFrame to look at target
     camera.CFrame = newCFrame
+    
+    -- Apply zoom effect when aiming
+    if not originalFOV then
+        originalFOV = camera.FieldOfView
+    end
+    camera.FieldOfView = zoomFOV
+end
+
+-- Function to reset camera zoom
+function Aimbot.ResetZoom()
+    local camera = game.Workspace.CurrentCamera
+    if originalFOV then
+        camera.FieldOfView = originalFOV
+    end
 end
 
 -- Activation function
@@ -93,9 +108,13 @@ function Aimbot.Enable()
                 -- Target is dead, reset
                 isAiming = false
                 aimbotTarget = nil
+                Aimbot.ResetZoom()
             end
         else
             -- E key released, reset targeting
+            if isAiming then
+                Aimbot.ResetZoom()
+            end
             isAiming = false
             aimbotTarget = nil
         end
@@ -111,6 +130,9 @@ function Aimbot.Disable()
         aimbotConnection = nil
     end
     
+    -- Reset zoom when disabled
+    Aimbot.ResetZoom()
+    
     isAiming = false
     aimbotTarget = nil
 end
@@ -118,6 +140,13 @@ end
 -- Current status
 function Aimbot.IsEnabled()
     return aimbotEnabled
+end
+
+-- Allow customization of zoom level
+function Aimbot.SetZoomLevel(fov)
+    if type(fov) == "number" and fov > 0 and fov < 120 then
+        zoomFOV = fov
+    end
 end
 
 return Aimbot.Init()
