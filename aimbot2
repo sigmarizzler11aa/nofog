@@ -1,4 +1,17 @@
--- Function to find the humanoid closest to the mouse cursor
+local Aimbot2 = {}
+local aimbotEnabled = false
+local aimbotTarget = nil
+local aimbotConnection = nil
+local isAiming = false
+local originalCameraSubject = nil
+local originalCameraType = nil
+local cameraOffsetHeight = 5 -- Default height above target
+local cameraOffsetDistance = 10 -- Default distance behind target
+
+function Aimbot2.Init()
+    return Aimbot2
+end
+
 function Aimbot2.GetClosestTarget()
     local player = game.Players.LocalPlayer
     local mouse = player:GetMouse()
