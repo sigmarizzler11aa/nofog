@@ -7,11 +7,14 @@ local originalCameraSubject = nil
 local originalCameraType = nil
 local cameraOffsetHeight = 5 -- Default height above target
 local cameraOffsetDistance = 10 -- Default distance behind target
+local previousTargets = {} -- Keep track of previously selected targets
+local switchingTarget = false -- Flag to prevent rapid tab switching
 
 function Aimbot2.Init()
     return Aimbot2
 end
 
+-- Function to find the humanoid closest to the mouse cursor
 function Aimbot2.GetClosestTarget()
     local player = game.Players.LocalPlayer
     local mouse = player:GetMouse()
@@ -49,20 +52,6 @@ function Aimbot2.GetClosestTarget()
     end
     
     return closestHumanoid
-endlocal Aimbot2 = {}
-local aimbotEnabled = false
-local aimbotTarget = nil
-local aimbotConnection = nil
-local isAiming = false
-local originalCameraSubject = nil
-local originalCameraType = nil
-local cameraOffsetHeight = 5 -- Default height above target
-local cameraOffsetDistance = 10 -- Default distance behind target
-local previousTargets = {} -- Keep track of previously selected targets
-local switchingTarget = false -- Flag to prevent rapid tab switching
-
-function Aimbot2.Init()
-    return Aimbot2
 end
 
 -- Function to find the next valid target (excluding previous targets)
