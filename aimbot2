@@ -9,46 +9,78 @@ local cameraOffsetHeight = 5 -- Default height above target
 local cameraOffsetDistance = 10 -- Default distance behind target
 local previousTargets = {} -- Keep track of previously selected targets
 local switchingTarget = false -- Flag to prevent rapid tab switching
+local maxTargetHistory = 50 -- Limit history size to prevent memory issues
 
-function Aimbot2.Init()
-    return Aimbot2
+-- Helper function to safely check if a model is a valid target
+local function isValidTarget(model, player)
+    -- Make sure model exists and is a Model
+    if not model or not model:IsA("Model") then 
+        return false 
+    end
+    
+    -- Make sure model isn't the player character
+    if player and player.Character and model == player.Character then
+        return false
+    end
+    
+    -- Check if the model has necessary parts and is alive
+    local hasHumanoid = model:FindFirstChild("Humanoid") ~= nil
+    local hasHRP = model:FindFirstChild("HumanoidRootPart") ~= nil
+    local isAlive = hasHumanoid and model.Humanoid.Health > 0
+    
+    return hasHumanoid and hasHRP and isAlive
 end
 
 -- Function to find the humanoid closest to the mouse cursor
 function Aimbot2.GetClosestTarget()
+    -- Safety check - make sure player exists
     local player = game.Players.LocalPlayer
+    if not player then return nil end
+    
     local mouse = player:GetMouse()
     local camera = workspace.CurrentCamera
+    if not camera then return nil end
     
     local closestDistanceToMouse = math.huge
     local closestHumanoid = nil
     
-    for _, model in pairs(workspace:GetDescendants()) do
-        if model:IsA("Model") and 
-           model ~= player.Character and 
-           model:FindFirstChild("Humanoid") and 
-           model:FindFirstChild("HumanoidRootPart") and
-           model.Humanoid.Health > 0 then
-           
-            -- Prioritize head if it exists, otherwise use HumanoidRootPart
-            local targetPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+    -- Set a limit for how many models to check to prevent lag
+    local modelsChecked = 0
+    local maxModelsToCheck = 1000
+    
+    -- Use pcall to catch any errors during the search
+    local success, result = pcall(function()
+        for _, model in pairs(workspace:GetDescendants()) do
+            -- Limit how many models we check to prevent freezing
+            modelsChecked = modelsChecked + 1
+            if modelsChecked > maxModelsToCheck then break end
             
-            -- Get the screen position of the target's head/part
-            local screenPoint, onScreen = camera:WorldToScreenPoint(targetPart.Position)
-            
-            -- Check if the target is in front of the camera and on screen
-            if onScreen and screenPoint.Z > 0 then
-                -- Calculate distance between mouse and target on screen
-                local mouseDistX = (screenPoint.X - mouse.X)
-                local mouseDistY = (screenPoint.Y - mouse.Y)
-                local mouseDistance = math.sqrt(mouseDistX^2 + mouseDistY^2)
+            if isValidTarget(model, player) then
+                -- Prioritize head if it exists, otherwise use HumanoidRootPart
+                local targetPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
                 
-                if mouseDistance < closestDistanceToMouse then
-                    closestDistanceToMouse = mouseDistance
-                    closestHumanoid = model
+                -- Get the screen position of the target's head/part
+                local screenPoint, onScreen = camera:WorldToScreenPoint(targetPart.Position)
+                
+                -- Check if the target is in front of the camera and on screen
+                if onScreen and screenPoint.Z > 0 then
+                    -- Calculate distance between mouse and target on screen
+                    local mouseDistX = (screenPoint.X - mouse.X)
+                    local mouseDistY = (screenPoint.Y - mouse.Y)
+                    local mouseDistance = math.sqrt(mouseDistX^2 + mouseDistY^2)
+                    
+                    if mouseDistance < closestDistanceToMouse then
+                        closestDistanceToMouse = mouseDistance
+                        closestHumanoid = model
+                    end
                 end
             end
         end
+    end)
+    
+    if not success then
+        warn("Aimbot2: Error finding closest target: " .. tostring(result))
+        return nil
     end
     
     return closestHumanoid
@@ -56,43 +88,60 @@ end
 
 -- Function to find the next valid target (excluding previous targets)
 function Aimbot2.SwitchTarget()
+    -- Safety check - make sure player exists
     local player = game.Players.LocalPlayer
+    if not player then return nil end
+    
     local camera = workspace.CurrentCamera
+    if not camera then return nil end
+    
     local potentialTargets = {}
     
-    -- Collect all valid targets
-    for _, model in pairs(workspace:GetDescendants()) do
-        if model:IsA("Model") and 
-           model ~= player.Character and 
-           model:FindFirstChild("Humanoid") and 
-           model:FindFirstChild("HumanoidRootPart") and
-           model:FindFirstChild("Head") and
-           model.Humanoid.Health > 0 then
-            
-            -- Check if this target hasn't been previously selected
-            local wasTargetedBefore = false
-            for _, prevTarget in ipairs(previousTargets) do
-                if model == prevTarget then
-                    wasTargetedBefore = true
-                    break
+    -- Use pcall to catch any errors during the search
+    local success, _ = pcall(function()
+        -- Clean up previous targets list - remove invalid targets
+        local validPreviousTargets = {}
+        for _, prevTarget in ipairs(previousTargets) do
+            if isValidTarget(prevTarget, player) then
+                table.insert(validPreviousTargets, prevTarget)
+            end
+        end
+        previousTargets = validPreviousTargets
+        
+        -- Limit history size
+        while #previousTargets > maxTargetHistory do
+            table.remove(previousTargets, 1)
+        end
+        
+        -- Collect all valid targets that haven't been previously targeted
+        for _, model in pairs(workspace:GetDescendants()) do
+            if isValidTarget(model, player) then
+                -- Check if this target hasn't been previously selected
+                local wasTargetedBefore = false
+                for _, prevTarget in ipairs(previousTargets) do
+                    if model == prevTarget then
+                        wasTargetedBefore = true
+                        break
+                    end
+                end
+                
+                -- Only add targets that haven't been selected before
+                if not wasTargetedBefore then
+                    table.insert(potentialTargets, model)
                 end
             end
-            
-            -- Only add targets that haven't been selected before
-            if not wasTargetedBefore then
-                table.insert(potentialTargets, model)
-            end
         end
+    end)
+    
+    if not success then
+        warn("Aimbot2: Error collecting potential targets")
+        return nil
     end
     
-    -- If no new targets available, clear history and start over
+    -- If no new targets available, return to the current target
     if #potentialTargets == 0 then
-        previousTargets = {}
-        -- Current target should still be excluded
-        if aimbotTarget then
-            table.insert(previousTargets, aimbotTarget)
-        end
-        return Aimbot2.SwitchTarget()
+        -- No need to switch if there are no other targets
+        return aimbotTarget
     end
     
     -- Find closest target by 3D distance
@@ -100,15 +149,18 @@ function Aimbot2.SwitchTarget()
     local closestTarget = nil
     
     for _, target in ipairs(potentialTargets) do
-        local dist = (target.HumanoidRootPart.Position - camera.CFrame.Position).Magnitude
-        if dist < closestDist then
-            closestDist = dist
-            closestTarget = target
+        -- Safety check on HumanoidRootPart
+        if target and target:FindFirstChild("HumanoidRootPart") then
+            local dist = (target.HumanoidRootPart.Position - camera.CFrame.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestTarget = target
+            end
         end
     end
     
     -- Add current target to previous targets list before switching
-    if aimbotTarget then
+    if aimbotTarget and not table.find(previousTargets, aimbotTarget) then
         table.insert(previousTargets, aimbotTarget)
     end
     
@@ -120,124 +172,169 @@ function Aimbot2.SpectateTarget(target)
     if not target then return end
     
     local camera = game.Workspace.CurrentCamera
+    if not camera then return end
+    
     local player = game.Players.LocalPlayer
+    if not player then return end
     
-    -- Store original camera settings if not already stored
-    if not originalCameraType then
-        originalCameraType = camera.CameraType
-        originalCameraSubject = camera.CameraSubject
+    -- Use pcall to safely position the camera
+    local success, errorMsg = pcall(function()
+        -- Store original camera settings if not already stored
+        if not originalCameraType then
+            originalCameraType = camera.CameraType
+            originalCameraSubject = camera.CameraSubject
+        end
+        
+        -- Get target's head (or fall back to HumanoidRootPart if no head)
+        local targetHead = target:FindFirstChild("Head")
+        local targetHRP = target:FindFirstChild("HumanoidRootPart")
+        
+        if not targetHead and not targetHRP then return end
+        
+        -- Use head if available, otherwise use HumanoidRootPart
+        local targetPart = targetHead or targetHRP
+        
+        -- Set camera type to scriptable to manually position it
+        camera.CameraType = Enum.CameraType.Scriptable
+        
+        -- Calculate direction the target is facing
+        local lookVector
+        if targetHRP then
+            lookVector = targetHRP.CFrame.LookVector -- Use HRP for direction even if targeting head
+        else
+            lookVector = targetPart.CFrame.LookVector
+        end
+        
+        -- Calculate position behind and above the target using the configurable values
+        local cameraPosition = targetPart.Position - (lookVector * cameraOffsetDistance) + Vector3.new(0, cameraOffsetHeight, 0)
+        
+        -- Set camera CFrame to look at the target's head from the calculated position
+        camera.CFrame = CFrame.new(cameraPosition, targetPart.Position)
+    end)
+    
+    if not success then
+        warn("Aimbot2: Error in SpectateTarget: " .. tostring(errorMsg))
+        Aimbot2.ResetCamera() -- Reset camera if there was an error
     end
-    
-    -- Get target's head (or fall back to HumanoidRootPart if no head)
-    local targetHead = target:FindFirstChild("Head")
-    local targetHRP = target:FindFirstChild("HumanoidRootPart")
-    
-    if not targetHead and not targetHRP then return end
-    
-    -- Use head if available, otherwise use HumanoidRootPart
-    local targetPart = targetHead or targetHRP
-    
-    -- Set camera type to scriptable to manually position it
-    camera.CameraType = Enum.CameraType.Scriptable
-    
-    -- Calculate direction the target is facing
-    local lookVector
-    if targetHRP then
-        lookVector = targetHRP.CFrame.LookVector -- Use HRP for direction even if targeting head
-    else
-        lookVector = targetPart.CFrame.LookVector
-    end
-    
-    -- Calculate position behind and above the target using the configurable values
-    local cameraPosition = targetPart.Position - (lookVector * cameraOffsetDistance) + Vector3.new(0, cameraOffsetHeight, 0)
-    
-    -- Set camera CFrame to look at the target's head from the calculated position
-    camera.CFrame = CFrame.new(cameraPosition, targetPart.Position)
 end
 
 -- Function to reset camera to normal
 function Aimbot2.ResetCamera()
     local camera = game.Workspace.CurrentCamera
+    if not camera then return end
+    
     local player = game.Players.LocalPlayer
+    if not player then return end
     
-    -- Restore original camera settings
-    if originalCameraType then
-        camera.CameraType = originalCameraType
-    else
-        -- Default to classic camera type if original wasn't stored
-        camera.CameraType = Enum.CameraType.Custom
-    end
-    
-    if originalCameraSubject then
-        camera.CameraSubject = originalCameraSubject
-    elseif player and player.Character and player.Character:FindFirstChild("Humanoid") then
-        -- Fallback to player's humanoid if original subject is no longer valid
-        camera.CameraSubject = player.Character.Humanoid
-    end
-    
-    -- Force reset camera to player's character view
-    if player and player.Character and player.Character:FindFirstChild("Humanoid") then
-        -- Ensure the character has a humanoid
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        camera.CameraSubject = humanoid
+    -- Use pcall to safely reset the camera
+    local success, errorMsg = pcall(function()
+        -- Restore original camera settings
+        if originalCameraType then
+            camera.CameraType = originalCameraType
+        else
+            -- Default to classic camera type if original wasn't stored
+            camera.CameraType = Enum.CameraType.Custom
+        end
         
-        -- Reset to default camera type (just to be sure)
-        camera.CameraType = Enum.CameraType.Custom
+        if originalCameraSubject then
+            camera.CameraSubject = originalCameraSubject
+        elseif player and player.Character and player.Character:FindFirstChild("Humanoid") then
+            -- Fallback to player's humanoid if original subject is no longer valid
+            camera.CameraSubject = player.Character.Humanoid
+        end
         
-        -- Clear the internal variables 
-        originalCameraType = nil
-        originalCameraSubject = nil
+        -- Force reset camera to player's character view
+        if player and player.Character and player.Character:FindFirstChild("Humanoid") then
+            -- Ensure the character has a humanoid
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            camera.CameraSubject = humanoid
+            
+            -- Reset to default camera type (just to be sure)
+            camera.CameraType = Enum.CameraType.Custom
+            
+            -- Clear the internal variables 
+            originalCameraType = nil
+            originalCameraSubject = nil
+        end
+    end)
+    
+    if not success then
+        warn("Aimbot2: Error in ResetCamera: " .. tostring(errorMsg))
+        -- Last resort reset if all else fails
+        if camera then
+            camera.CameraType = Enum.CameraType.Custom
+        end
     end
 end
 
 -- Activation function
 function Aimbot2.Enable()
+    if aimbotEnabled then return end -- Already enabled
+    
     aimbotEnabled = true
     previousTargets = {} -- Reset target history when enabling
     
     if aimbotConnection then
         aimbotConnection:Disconnect()
+        aimbotConnection = nil
     end
     
-    aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
-        local UserInputService = game:GetService("UserInputService")
-        
-        -- Check if E key is pressed
-        if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-            -- If not already aiming or if target died, get a new target
-            if not isAiming or (aimbotTarget and aimbotTarget:FindFirstChild("Humanoid") and aimbotTarget.Humanoid.Health <= 0) then
-                aimbotTarget = Aimbot2.GetClosestTarget()
-                isAiming = true
-            end
-            
-            -- Check for Tab key press to switch targets
-            if UserInputService:IsKeyDown(Enum.KeyCode.Tab) and not switchingTarget then
-                switchingTarget = true
-                aimbotTarget = Aimbot2.SwitchTarget()
+    -- Use spawn to prevent the function from yielding
+    spawn(function()
+        -- Use pcall to catch any errors in the main loop
+        local success, errorMsg = pcall(function()
+            aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                local UserInputService = game:GetService("UserInputService")
                 
-                -- Delay to prevent multiple switches from one press
-                spawn(function()
-                    wait(0.3) -- Short cooldown for tab switching
-                    switchingTarget = false
-                end)
-            end
-            
-            -- If we have a valid target, spectate it
-            if aimbotTarget and aimbotTarget:FindFirstChild("Humanoid") and aimbotTarget.Humanoid.Health > 0 then
-                Aimbot2.SpectateTarget(aimbotTarget)
-            else
-                -- Target is dead, reset
-                isAiming = false
-                aimbotTarget = nil
-                Aimbot2.ResetCamera()
-            end
-        else
-            -- E key released, reset targeting
-            if isAiming then
-                Aimbot2.ResetCamera()
-            end
-            isAiming = false
-            aimbotTarget = nil
+                -- Check if E key is pressed
+                if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+                    -- If not already aiming or if target died, get a new target
+                    if not isAiming or not isValidTarget(aimbotTarget, game.Players.LocalPlayer) then
+                        aimbotTarget = Aimbot2.GetClosestTarget()
+                        isAiming = true
+                    end
+                    
+                    -- Check for Tab key press to switch targets
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Tab) and not switchingTarget then
+                        switchingTarget = true
+                        
+                        -- Use spawn to prevent freezing if switching takes time
+                        spawn(function()
+                            local newTarget = Aimbot2.SwitchTarget()
+                            -- Only change target if we found a new one
+                            if newTarget and newTarget ~= aimbotTarget then
+                                aimbotTarget = newTarget
+                            end
+                            
+                            -- Delay to prevent multiple switches from one press
+                            wait(0.1) -- Short cooldown for tab switching
+                            switchingTarget = false
+                        end)
+                    end
+                    
+                    -- If we have a valid target, spectate it
+                    if isValidTarget(aimbotTarget, game.Players.LocalPlayer) then
+                        Aimbot2.SpectateTarget(aimbotTarget)
+                    else
+                        -- Target is dead or invalid, reset
+                        isAiming = false
+                        aimbotTarget = nil
+                        Aimbot2.ResetCamera()
+                    end
+                else
+                    -- E key released, reset targeting
+                    if isAiming then
+                        Aimbot2.ResetCamera()
+                    end
+                    isAiming = false
+                    aimbotTarget = nil
+                end
+            end)
+        end)
+        
+        if not success then
+            warn("Aimbot2: Error in Enable function: " .. tostring(errorMsg))
+            Aimbot2.Disable() -- Disable if there was an error
         end
     end)
 end
@@ -247,7 +344,10 @@ function Aimbot2.Disable()
     aimbotEnabled = false
     
     if aimbotConnection then
-        aimbotConnection:Disconnect()
+        -- Use pcall in case the connection is already gone
+        pcall(function()
+            aimbotConnection:Disconnect()
+        end)
         aimbotConnection = nil
     end
     
@@ -256,6 +356,7 @@ function Aimbot2.Disable()
     
     isAiming = false
     aimbotTarget = nil
+    switchingTarget = false
 end
 
 -- Current status
@@ -284,4 +385,5 @@ function Aimbot2.GetCameraDistance()
     return cameraOffsetDistance
 end
 
-return Aimbot2.Init()
+-- Return the module table directly
+return Aimbot2
